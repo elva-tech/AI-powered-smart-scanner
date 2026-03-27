@@ -144,7 +144,11 @@ function ActiveSessionsTable() {
                 <tr><td colSpan={6} className="px-5 py-8 text-center text-sm text-[var(--muted)]">No active sessions.</td></tr>
               )}
               {sessions.map((sess) => (
-                <tr key={sess.id} className="hover:bg-white/[0.02] transition-colors">
+                <tr
+  key={sess.id}
+  onClick={() => dispatch(openModal({ type: "EDIT", user: sess }))} 
+  className="hover:bg-white/[0.02] transition-colors cursor-pointer"
+>
                   <td className="px-5 py-3.5 text-sm text-[var(--text)]">{sess.email}</td>
                   <td className="px-5 py-3.5"><RoleBadge role={sess.role} /></td>
                   <td className="px-5 py-3.5 text-sm font-mono text-[var(--muted)]">{sess.ip}</td>
