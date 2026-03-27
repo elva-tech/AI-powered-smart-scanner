@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+
+/* DARK DEFAULT */
+:root {
+  --bg: #0B1220;
+  --card: #111827;
+  --border: #1F2937;
+  --text: #F9FAFB;
+  --muted: #9CA3AF;
+  --primary: #2563EB;
+}
+
+/* LIGHT MODE */
+.light {
+  --bg: #F9FAFB;
+  --card: #ffffff;
+  --border: #E5E7EB;
+  --text: #111827;
+  --muted: #6B7280;
+}
+
+/* COLOR THEMES */
+.theme-blue { --primary: #2563EB; }
+.theme-purple { --primary: #7C3AED; }
+.theme-green { --primary: #16A34A; }
+.theme-orange { --primary: #EA580C; }
+.theme-red { --primary: #DC2626; }
+.theme-teal { --primary: #0D9488; }
+
+/* APPLY */
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* SMOOTH UI */
+* {
+  transition: all 0.2s ease-in-out;
+}
