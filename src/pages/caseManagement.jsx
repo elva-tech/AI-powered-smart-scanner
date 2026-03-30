@@ -16,7 +16,7 @@
 import { useEffect, useState, useCallback, useRef, memo } from "react";
 import { useLocation } from "react-router-dom";
 import Sidebar from "../components/layout/Sidebar";
-import Topbar  from "../components/layout/Topbar";
+import Topbar from "../components/layout/Topbar";
 import {
   fetchCasesAPI, fetchCaseDetailAPI, updateCaseAPI,
   createTaskAPI, assignCaseAPI, fetchInvestigatorsAPI, TASK_PROCESSORS,
@@ -30,32 +30,32 @@ import {
 } from "@phosphor-icons/react";
 
 // ─── Style maps ───────────────────────────────────────────────────────────────
-const RISK_COLOR = s => s>=90?"text-red-400":s>=75?"text-orange-400":s>=60?"text-yellow-400":"text-green-400";
+const RISK_COLOR = s => s >= 90 ? "text-red-400" : s >= 75 ? "text-orange-400" : s >= 60 ? "text-yellow-400" : "text-green-400";
 const SEV = {
-  critical:"bg-red-500/20 text-red-400 border border-red-500/30",
-  high:    "bg-orange-500/20 text-orange-400 border border-orange-500/30",
-  medium:  "bg-amber-500/20 text-amber-400 border border-amber-500/30",
-  low:     "bg-green-500/20 text-green-400 border border-green-500/30",
+  critical: "bg-red-500/20 text-red-400 border border-red-500/30",
+  high: "bg-orange-500/20 text-orange-400 border border-orange-500/30",
+  medium: "bg-amber-500/20 text-amber-400 border border-amber-500/30",
+  low: "bg-green-500/20 text-green-400 border border-green-500/30",
 };
 const STATUS_CLS = {
-  "New":          "bg-blue-500/20 text-blue-300 border border-blue-500/30",
-  "Investigating":"bg-amber-500/20 text-amber-300 border border-amber-500/30",
-  "AI Assisted":  "bg-purple-500/20 text-purple-300 border border-purple-500/30",
-  "Closed":       "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30",
-  "Escalated":    "bg-red-500/20 text-red-300 border border-red-500/30",
+  "New": "bg-blue-500/20 text-blue-300 border border-blue-500/30",
+  "Investigating": "bg-amber-500/20 text-amber-300 border border-amber-500/30",
+  "AI Assisted": "bg-purple-500/20 text-purple-300 border border-purple-500/30",
+  "Closed": "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30",
+  "Escalated": "bg-red-500/20 text-red-300 border border-red-500/30",
 };
-const ENV_CLS = { STAGING:"text-amber-400", PRODUCTION:"text-red-400", DEVELOPMENT:"text-emerald-400" };
+const ENV_CLS = { STAGING: "text-amber-400", PRODUCTION: "text-red-400", DEVELOPMENT: "text-emerald-400" };
 
 // ─── Atoms ────────────────────────────────────────────────────────────────────
-const SevBadge = memo(({sev}) =>
-  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${SEV[sev]||SEV.low}`}>{sev}</span>
+const SevBadge = memo(({ sev }) =>
+  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${SEV[sev] || SEV.low}`}>{sev}</span>
 );
-const StatusBadge = memo(({status}) =>
-  <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-semibold ${STATUS_CLS[status]||STATUS_CLS["New"]}`}>{status}</span>
+const StatusBadge = memo(({ status }) =>
+  <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-semibold ${STATUS_CLS[status] || STATUS_CLS["New"]}`}>{status}</span>
 );
-const AssigneeChip = memo(({name}) => {
-  if(!name||name==="Unassigned") return <span className="text-[12px] text-[var(--muted)]">Unassigned</span>;
-  const init = name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
+const AssigneeChip = memo(({ name }) => {
+  if (!name || name === "Unassigned") return <span className="text-[12px] text-[var(--muted)]">Unassigned</span>;
+  const init = name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
   return (
     <div className="flex items-center gap-2">
       <div className="w-6 h-6 rounded-full bg-[var(--primary)]/20 border border-[var(--primary)]/30 flex items-center justify-center text-[9px] font-bold text-[var(--primary)]">{init}</div>
@@ -65,34 +65,34 @@ const AssigneeChip = memo(({name}) => {
 });
 
 /** Colored circle dot + label — matches screenshots exactly */
-function Sh({dot="bg-blue-500",label,badge,rightEl}) {
+function Sh({ dot = "bg-blue-500", label, badge, rightEl }) {
   return (
     <div className="flex items-center justify-between mb-3">
       <div className="flex items-center gap-2.5">
-        <div className={`w-3 h-3 rounded-full flex-shrink-0 ${dot}`}/>
+        <div className={`w-3 h-3 rounded-full flex-shrink-0 ${dot}`} />
         <h3 className="text-[13px] font-semibold text-[var(--text)]">{label}</h3>
-        {badge&&<span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 font-semibold">{badge}</span>}
+        {badge && <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 font-semibold">{badge}</span>}
       </div>
       {rightEl}
     </div>
   );
 }
-function InfoCell({label,value,mono=false,cls=""}) {
+function InfoCell({ label, value, mono = false, cls = "" }) {
   return (
     <div className={`p-3 rounded-lg border border-[var(--border)] bg-white/[0.015] ${cls}`}>
       <p className="text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1">{label}</p>
-      <p className={`text-[13px] font-medium text-[var(--text)] ${mono?"font-mono text-[11px] break-all":""}`}>{value||"—"}</p>
+      <p className={`text-[13px] font-medium text-[var(--text)] ${mono ? "font-mono text-[11px] break-all" : ""}`}>{value || "—"}</p>
     </div>
   );
 }
 
 // ─── In-modal toast (replaces browser alert) ──────────────────────────────────
-function Toast({msg, onClose}) {
-  useEffect(()=>{ const t = setTimeout(onClose, 3500); return()=>clearTimeout(t); },[onClose]);
+function Toast({ msg, onClose }) {
+  useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]);
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-[#1a2035] border border-[var(--border)] rounded-2xl shadow-2xl px-6 py-5 max-w-sm w-full mx-4 text-center space-y-4">
-        <CheckFat size={28} weight="fill" className="text-emerald-400 mx-auto"/>
+        <CheckFat size={28} weight="fill" className="text-emerald-400 mx-auto" />
         <p className="text-[14px] font-semibold text-[var(--text)]">{msg}</p>
         <button onClick={onClose} className="px-6 py-2 rounded-xl bg-[var(--primary)] hover:opacity-90 text-white text-[13px] font-semibold transition-opacity">OK</button>
       </div>
@@ -101,16 +101,16 @@ function Toast({msg, onClose}) {
 }
 
 // ─── Assign Panel ─────────────────────────────────────────────────────────────
-function AssignPanel({caseId, currentUser, onAssign, onClose}) {
+function AssignPanel({ caseId, currentUser, onAssign, onClose }) {
   const [investigators, setInvestigators] = useState([]);
   const [loading, setLoading] = useState(true);
   const [assigning, setAssigning] = useState(null);
 
-  useEffect(()=>{
-    fetchInvestigatorsAPI().then(r=>{ if(r.success) setInvestigators(r.data); setLoading(false); });
-  },[]);
+  useEffect(() => {
+    fetchInvestigatorsAPI().then(r => { if (r.success) setInvestigators(r.data); setLoading(false); });
+  }, []);
 
-  const doAssign = async(name) => {
+  const doAssign = async (name) => {
     setAssigning(name);
     await assignCaseAPI(caseId, name);
     onAssign(name);
@@ -118,47 +118,47 @@ function AssignPanel({caseId, currentUser, onAssign, onClose}) {
   };
 
   return (
-    <div className="fixed inset-0 z-[55] flex" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-      <div className="flex-1 bg-black/40" onClick={onClose}/>
+    <div className="fixed inset-0 z-[55] flex" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="flex-1 bg-black/40" onClick={onClose} />
       <div className="w-[320px] bg-[#0f1520] border-l border-[var(--border)] flex flex-col shadow-2xl">
         <div className="flex items-center justify-between px-4 py-3.5 border-b border-[var(--border)]">
           <h3 className="text-[13px] font-semibold text-[var(--text)]">Available Investigators</h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-[var(--muted)] hover:bg-white/5"><X size={15}/></button>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-[var(--muted)] hover:bg-white/5"><X size={15} /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {/* Assign to Me */}
-          <button onClick={()=>doAssign(currentUser)}
+          <button onClick={() => doAssign(currentUser)}
             className="w-full flex items-center gap-3 p-3 rounded-xl border border-[var(--primary)]/40 bg-[var(--primary)]/10 hover:bg-[var(--primary)]/15 transition-colors text-left group">
             <div className="w-9 h-9 rounded-full bg-[var(--primary)] flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0">
-              {currentUser?.[0]?.toUpperCase()||"A"}
+              {currentUser?.[0]?.toUpperCase() || "A"}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[12px] font-semibold text-[var(--text)]">Assign to Me</p>
               <p className="text-[10px] text-[var(--muted)]">Current User</p>
             </div>
-            {assigning===currentUser ? <CircleNotch size={14} className="animate-spin text-[var(--primary)]"/> : <ArrowRight size={14} className="text-[var(--primary)] opacity-0 group-hover:opacity-100 transition-opacity"/>}
+            {assigning === currentUser ? <CircleNotch size={14} className="animate-spin text-[var(--primary)]" /> : <ArrowRight size={14} className="text-[var(--primary)] opacity-0 group-hover:opacity-100 transition-opacity" />}
           </button>
 
           {loading ? (
             <div className="py-4 flex items-center justify-center gap-2 text-[var(--muted)]">
-              <CircleNotch size={14} className="animate-spin text-blue-400"/>
+              <CircleNotch size={14} className="animate-spin text-blue-400" />
               <span className="text-[11px]">Loading investigators...</span>
             </div>
           ) : (
-            investigators.map(inv=>(
-              <button key={inv.id} onClick={()=>doAssign(inv.name)}
+            investigators.map(inv => (
+              <button key={inv.id} onClick={() => doAssign(inv.name)}
                 className="w-full flex items-center gap-3 p-3 rounded-xl border border-[var(--border)] hover:border-[var(--primary)]/40 hover:bg-white/[0.03] transition-all text-left group">
-                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0 ${inv.isAI?"bg-purple-600":inv.available?"bg-teal-600":"bg-gray-600"}`}>
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0 ${inv.isAI ? "bg-purple-600" : inv.available ? "bg-teal-600" : "bg-gray-600"}`}>
                   {inv.avatar}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <p className="text-[12px] font-semibold text-[var(--text)] truncate">{inv.name}</p>
-                    {!inv.available&&<span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-700 text-gray-400 font-medium flex-shrink-0">Busy</span>}
+                    {!inv.available && <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-700 text-gray-400 font-medium flex-shrink-0">Busy</span>}
                   </div>
                   <p className="text-[10px] text-[var(--muted)] truncate">{inv.title}</p>
                 </div>
-                {assigning===inv.name ? <CircleNotch size={14} className="animate-spin text-blue-400"/> : <ArrowRight size={14} className="text-[var(--muted)] opacity-0 group-hover:opacity-100 transition-opacity"/>}
+                {assigning === inv.name ? <CircleNotch size={14} className="animate-spin text-blue-400" /> : <ArrowRight size={14} className="text-[var(--muted)] opacity-0 group-hover:opacity-100 transition-opacity" />}
               </button>
             ))
           )}
@@ -169,79 +169,79 @@ function AssignPanel({caseId, currentUser, onAssign, onClose}) {
 }
 
 // ─── Case Investigation Modal ──────────────────────────────────────────────────
-function CaseModal({caseId, onClose, onUpdate}) {
-  const [data,          setData]         = useState(null);
-  const [loading,       setLoading]      = useState(true);
-  const [saving,        setSaving]       = useState(false);
-  const [toast,         setToast]        = useState(null);
-  const [tasks,         setTasks]        = useState([]);
-  const [showTaskForm,  setShowTaskForm] = useState(false);
-  const [taskSaving,    setTaskSaving]   = useState(false);
-  const [taskError,     setTaskError]    = useState("");
-  const [taskForm,      setTaskForm]     = useState({title:"",assignTo:"",description:"",priority:"Medium",dueDate:""});
-  const [showAssign,    setShowAssign]   = useState(false);
+function CaseModal({ caseId, onClose, onUpdate }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [tasks, setTasks] = useState([]);
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [taskSaving, setTaskSaving] = useState(false);
+  const [taskError, setTaskError] = useState("");
+  const [taskForm, setTaskForm] = useState({ title: "", assignTo: "", description: "", priority: "Medium", dueDate: "" });
+  const [showAssign, setShowAssign] = useState(false);
   const scrollRef = useRef(null);
 
-  useEffect(()=>{
+  useEffect(() => {
     setLoading(true);
-    fetchCaseDetailAPI(caseId).then(r=>{ if(r.success) setData(r.data); setLoading(false); });
-  },[caseId]);
+    fetchCaseDetailAPI(caseId).then(r => { if (r.success) setData(r.data); setLoading(false); });
+  }, [caseId]);
 
-  const handleAction = useCallback(async(action)=>{
-    if(!data||saving) return;
+  const handleAction = useCallback(async (action) => {
+    if (!data || saving) return;
     setSaving(true);
     const MAP = {
-      "Escalate":     {status:"Escalated",    closureStatus:null},
-      "Confirmed":    {status:"Closed",        closureStatus:"Confirmed"},
-      "FalsePositive":{status:"Closed",        closureStatus:"False Positive"},
-      "NoAction":     {status:"Closed",        closureStatus:"No Action Needed"},
-      "Reassign":     {status:"Investigating", closureStatus:null},
+      "Escalate": { status: "Escalated", closureStatus: null },
+      "Confirmed": { status: "Closed", closureStatus: "Confirmed" },
+      "FalsePositive": { status: "Closed", closureStatus: "False Positive" },
+      "NoAction": { status: "Closed", closureStatus: "No Action Needed" },
+      "Reassign": { status: "Investigating", closureStatus: null },
     };
-    const payload = MAP[action]||{};
+    const payload = MAP[action] || {};
     const r = await updateCaseAPI(data.id, payload);
-    if(r.success){
-      setData(p=>({...p,...payload}));
+    if (r.success) {
+      setData(p => ({ ...p, ...payload }));
       onUpdate(data.id, payload);
       // Show in-modal toast instead of browser alert
-      if(payload.status==="Closed"){
+      if (payload.status === "Closed") {
         setToast(`Case ${data.id} closed as: ${payload.closureStatus}`);
-      } else if(action==="Escalate"){
+      } else if (action === "Escalate") {
         setToast(`Case ${data.id} escalated to Senior Team`);
-      } else if(action==="Reassign"){
+      } else if (action === "Reassign") {
         setToast(`Case ${data.id} marked as Investigating`);
       }
     }
     setSaving(false);
-  },[data,saving,onUpdate]);
+  }, [data, saving, onUpdate]);
 
-  const handleAssign = useCallback((name)=>{
-    setData(p=>({...p,assignee:name}));
-    onUpdate(caseId, {assignee:name});
+  const handleAssign = useCallback((name) => {
+    setData(p => ({ ...p, assignee: name }));
+    onUpdate(caseId, { assignee: name });
     setShowAssign(false);
     setToast(`Case assigned to ${name}`);
-  },[caseId,onUpdate]);
+  }, [caseId, onUpdate]);
 
-  const handleCreateTask = useCallback(async()=>{
-    if(!taskForm.title.trim()){setTaskError("Task title is required.");return;}
-    if(!taskForm.assignTo){setTaskError("Please assign to someone.");return;}
-    if(!taskForm.dueDate){setTaskError("Due date is required.");return;}
-    setTaskError("");setTaskSaving(true);
-    const r = await createTaskAPI(caseId,taskForm);
-    if(r.success){ setTasks(p=>[...p,r.data]); setTaskForm({title:"",assignTo:"",description:"",priority:"Medium",dueDate:""}); setShowTaskForm(false); }
+  const handleCreateTask = useCallback(async () => {
+    if (!taskForm.title.trim()) { setTaskError("Task title is required."); return; }
+    if (!taskForm.assignTo) { setTaskError("Please assign to someone."); return; }
+    if (!taskForm.dueDate) { setTaskError("Due date is required."); return; }
+    setTaskError(""); setTaskSaving(true);
+    const r = await createTaskAPI(caseId, taskForm);
+    if (r.success) { setTasks(p => [...p, r.data]); setTaskForm({ title: "", assignTo: "", description: "", priority: "Medium", dueDate: "" }); setShowTaskForm(false); }
     setTaskSaving(false);
-  },[caseId,taskForm]);
+  }, [caseId, taskForm]);
 
-  const d     = data?.detail;
-  const isClosed     = data?.status==="Closed";
-  const isUnassigned = !data?.assignee || data.assignee==="Unassigned";
+  const d = data?.detail;
+  const isClosed = data?.status === "Closed";
+  const isUnassigned = !data?.assignee || data.assignee === "Unassigned";
 
   return (
     <>
       {/* Modal */}
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-[3px]"
-        onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+        onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
         <div className="relative flex flex-col bg-[#0b0f1a] border border-[var(--border)] rounded-2xl shadow-2xl"
-          style={{width:"min(820px, 96vw)", height:"min(92vh, 920px)"}}>
+          style={{ width: "min(820px, 96vw)", height: "min(92vh, 920px)" }}>
 
           {/* Sticky header */}
           <div className="flex-shrink-0 px-6 pt-4 pb-3 border-b border-[var(--border)]">
@@ -250,10 +250,10 @@ function CaseModal({caseId, onClose, onUpdate}) {
               <span className="text-[12px] font-mono text-[var(--muted)]">{data?.id}</span>
               {data && <span className={`text-[12px] font-semibold ${RISK_COLOR(data.riskScore)}`}>Risk Score: {data.riskScore}/100</span>}
               <button onClick={onClose} className="ml-auto w-7 h-7 rounded-full border border-[var(--border)] flex items-center justify-center text-[var(--muted)] hover:text-[var(--text)] hover:bg-white/5 transition-colors">
-                <X size={15}/>
+                <X size={15} />
               </button>
             </div>
-            {data&&<p className="text-[12px] text-[var(--muted)] mt-0.5">{data.title}</p>}
+            {data && <p className="text-[12px] text-[var(--muted)] mt-0.5">{data.title}</p>}
           </div>
 
           {/* Scrollable body — GPU-accelerated, no scrollbar shown */}
@@ -261,10 +261,10 @@ function CaseModal({caseId, onClose, onUpdate}) {
             ref={scrollRef}
             className="flex-1 overflow-y-auto overscroll-contain"
             style={{
-              willChange:"transform",
-              transform:"translateZ(0)",
-              scrollbarWidth:"none",       /* Firefox */
-              msOverflowStyle:"none",      /* IE/Edge */
+              willChange: "transform",
+              transform: "translateZ(0)",
+              scrollbarWidth: "none",       /* Firefox */
+              msOverflowStyle: "none",      /* IE/Edge */
             }}
           >
             {/* Hide webkit scrollbar */}
@@ -273,7 +273,7 @@ function CaseModal({caseId, onClose, onUpdate}) {
 
               {loading ? (
                 <div className="flex items-center justify-center py-24 gap-3 text-[var(--muted)]">
-                  <CircleNotch size={22} className="animate-spin text-blue-400"/>
+                  <CircleNotch size={22} className="animate-spin text-blue-400" />
                   <span className="text-sm">Loading...</span>
                 </div>
               ) : !d ? (
@@ -282,15 +282,15 @@ function CaseModal({caseId, onClose, onUpdate}) {
 
                 {/* Case Overview */}
                 <section>
-                  <Sh dot="bg-blue-500" label="Case Overview"/>
+                  <Sh dot="bg-blue-500" label="Case Overview" />
                   <div className="grid grid-cols-2 gap-3">
                     <div className="p-3.5 rounded-xl border border-[var(--border)] bg-white/[0.02]">
                       <p className="text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-2">STATUS</p>
-                      <StatusBadge status={data.status}/>
+                      <StatusBadge status={data.status} />
                     </div>
                     <div className="p-3.5 rounded-xl border border-[var(--border)] bg-white/[0.02]">
                       <p className="text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-2">ASSIGNEE</p>
-                      <AssigneeChip name={data.assignee}/>
+                      <AssigneeChip name={data.assignee} />
                     </div>
                   </div>
                 </section>
@@ -300,12 +300,12 @@ function CaseModal({caseId, onClose, onUpdate}) {
                   <div className="border border-[var(--border)] rounded-xl overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] bg-white/[0.02]">
                       <div className="flex items-center gap-2">
-                        <Robot size={14} weight="fill" className="text-blue-400"/>
+                        <Robot size={14} weight="fill" className="text-blue-400" />
                         <span className="text-[13px] font-semibold text-[var(--text)]">AI Analysis Summary</span>
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 font-semibold">{d.aiSummary.confidence}% Confidence</span>
                       </div>
                       <button className="px-3 py-1 rounded-md text-white text-[10px] font-bold uppercase tracking-wider transition-colors bg-red-500 hover:bg-red-400">
-                        {d.aiSummary.recommendation==="escalate"?"ESCALATE":"INVESTIGATE"}
+                        {d.aiSummary.recommendation === "escalate" ? "ESCALATE" : "INVESTIGATE"}
                       </button>
                     </div>
                     <div className="px-4 py-3 space-y-3">
@@ -313,9 +313,9 @@ function CaseModal({caseId, onClose, onUpdate}) {
                       <div>
                         <p className="text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-2">KEY FINDINGS</p>
                         <ul className="space-y-1.5">
-                          {d.aiSummary.keyFindings.map((f,i)=>(
+                          {d.aiSummary.keyFindings.map((f, i) => (
                             <li key={i} className="flex items-start gap-2 text-[12px] text-[var(--text)]">
-                              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-1.5 flex-shrink-0"/>{f}
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-1.5 flex-shrink-0" />{f}
                             </li>
                           ))}
                         </ul>
@@ -330,15 +330,15 @@ function CaseModal({caseId, onClose, onUpdate}) {
 
                 {/* Risk Indicators */}
                 <section>
-                  <Sh dot="bg-blue-500" label="Risk Indicators"/>
+                  <Sh dot="bg-blue-500" label="Risk Indicators" />
                   <div className="grid grid-cols-2 gap-3">
-                    {d.riskIndicators.map((r,i)=>(
+                    {d.riskIndicators.map((r, i) => (
                       <div key={i} className="p-3.5 rounded-xl border border-[var(--border)] bg-white/[0.02]">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-[12px] font-semibold text-[var(--text)]">{r.label}</span>
                           <span className={`text-[18px] font-bold ${RISK_COLOR(r.score)}`}>{r.score}</span>
                         </div>
-                        {r.bullets.map((b,j)=><p key={j} className="text-[11px] text-[var(--muted)]">• {b}</p>)}
+                        {r.bullets.map((b, j) => <p key={j} className="text-[11px] text-[var(--muted)]">• {b}</p>)}
                       </div>
                     ))}
                   </div>
@@ -346,7 +346,7 @@ function CaseModal({caseId, onClose, onUpdate}) {
 
                 {/* Financial Impact */}
                 <section>
-                  <Sh dot="bg-blue-500" label="Financial Impact Analysis"/>
+                  <Sh dot="bg-blue-500" label="Financial Impact Analysis" />
                   <div className="grid grid-cols-3 gap-3">
                     <div className="p-4 rounded-xl border border-[var(--border)] bg-white/[0.02]">
                       <p className="text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1">POTENTIAL LOSS</p>
@@ -357,7 +357,7 @@ function CaseModal({caseId, onClose, onUpdate}) {
                       <p className="text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1">RECOVERY PROBABILITY</p>
                       <p className="text-xl font-bold text-[var(--text)]">{d.financialImpact.recoveryProbability}%</p>
                       <div className="mt-2 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                        <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{width:`${d.financialImpact.recoveryProbability}%`}}/>
+                        <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${d.financialImpact.recoveryProbability}%` }} />
                       </div>
                     </div>
                     <div className="p-4 rounded-xl border border-[var(--border)] bg-white/[0.02]">
@@ -370,13 +370,13 @@ function CaseModal({caseId, onClose, onUpdate}) {
 
                 {/* Behavioral Patterns */}
                 <section>
-                  <Sh dot="bg-blue-500" label={`Behavioral Patterns (${d.behavioralPatterns.length})`}/>
+                  <Sh dot="bg-blue-500" label={`Behavioral Patterns (${d.behavioralPatterns.length})`} />
                   <div className="grid grid-cols-2 gap-3">
-                    {d.behavioralPatterns.map((p,i)=>(
+                    {d.behavioralPatterns.map((p, i) => (
                       <div key={i} className="p-3.5 rounded-xl border border-[var(--border)] bg-white/[0.02]">
                         <div className="flex items-center justify-between mb-1.5">
                           <span className="text-[12px] font-semibold text-[var(--text)]">{p.name}</span>
-                          <SevBadge sev={p.severity}/>
+                          <SevBadge sev={p.severity} />
                         </div>
                         <p className="text-[11px] text-[var(--muted)]">Frequency: {p.frequency}</p>
                         <p className="text-[11px] text-[var(--muted)]">Last: {p.last}</p>
@@ -387,13 +387,13 @@ function CaseModal({caseId, onClose, onUpdate}) {
 
                 {/* Compliance Issues */}
                 <section>
-                  <Sh dot="bg-red-500" label={`Compliance & Regulatory Issues (${d.complianceIssues.length})`}/>
+                  <Sh dot="bg-red-500" label={`Compliance & Regulatory Issues (${d.complianceIssues.length})`} />
                   <div className="space-y-2">
-                    {d.complianceIssues.map((c,i)=>(
+                    {d.complianceIssues.map((c, i) => (
                       <div key={i} className="p-3.5 rounded-xl border border-[var(--border)] bg-white/[0.02]">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-[12px] font-semibold text-[var(--text)]">{c.law}</span>
-                          <SevBadge sev={c.severity}/>
+                          <SevBadge sev={c.severity} />
                         </div>
                         <p className="text-[11px] text-[var(--muted)] mb-1">{c.issue}</p>
                         <p className="text-[11px] text-[var(--muted)]">Potential Penalty: {c.penalty}</p>
@@ -405,21 +405,21 @@ function CaseModal({caseId, onClose, onUpdate}) {
                 {/* Network Analysis */}
                 <section>
                   <Sh dot="bg-blue-500" label="Network Analysis"
-                    badge={`${d.networkAnalysis.filter(n=>n.riskLevel==="high").length} Suspicious Connections`}/>
+                    badge={`${d.networkAnalysis.filter(n => n.riskLevel === "high").length} Suspicious Connections`} />
                   <div className="rounded-xl border border-[var(--border)] overflow-hidden">
                     <table className="w-full text-sm">
                       <thead className="bg-white/[0.03] border-b border-[var(--border)]">
-                        <tr>{["ENTITY ID","TYPE","RELATIONSHIP","RISK LEVEL"].map(h=>(
+                        <tr>{["ENTITY ID", "TYPE", "RELATIONSHIP", "RISK LEVEL"].map(h => (
                           <th key={h} className="px-4 py-2.5 text-left text-[10px] font-semibold text-[var(--muted)] tracking-widest uppercase">{h}</th>
                         ))}</tr>
                       </thead>
                       <tbody className="divide-y divide-[var(--border)]">
-                        {d.networkAnalysis.map((n,i)=>(
+                        {d.networkAnalysis.map((n, i) => (
                           <tr key={i} className="hover:bg-white/[0.02]">
                             <td className="px-4 py-2.5 text-[11px] font-mono text-[var(--text)]">{n.entityId}</td>
                             <td className="px-4 py-2.5 text-[12px] text-[var(--text)]">{n.type}</td>
                             <td className="px-4 py-2.5 text-[12px] text-[var(--muted)]">{n.relationship}</td>
-                            <td className="px-4 py-2.5"><SevBadge sev={n.riskLevel}/></td>
+                            <td className="px-4 py-2.5"><SevBadge sev={n.riskLevel} /></td>
                           </tr>
                         ))}
                       </tbody>
@@ -429,74 +429,74 @@ function CaseModal({caseId, onClose, onUpdate}) {
 
                 {/* Rule Info */}
                 <section>
-                  <Sh dot="bg-blue-500" label="Rule Information"/>
+                  <Sh dot="bg-blue-500" label="Rule Information" />
                   <div className="grid grid-cols-4 gap-3">
-                    <InfoCell label="RULE NAME"      value={d.ruleInfo.ruleName}/>
-                    <InfoCell label="RULE ID"        value={d.ruleInfo.ruleId} mono/>
-                    <InfoCell label="ENVIRONMENT"    value={d.ruleInfo.environment}/>
-                    <InfoCell label="DETECTION TIME" value={d.ruleInfo.detectionTime}/>
+                    <InfoCell label="RULE NAME" value={d.ruleInfo.ruleName} />
+                    <InfoCell label="RULE ID" value={d.ruleInfo.ruleId} mono />
+                    <InfoCell label="ENVIRONMENT" value={d.ruleInfo.environment} />
+                    <InfoCell label="DETECTION TIME" value={d.ruleInfo.detectionTime} />
                   </div>
                 </section>
 
                 {/* Transaction Details */}
                 <section>
-                  <Sh dot="bg-blue-500" label="Transaction Details"/>
+                  <Sh dot="bg-blue-500" label="Transaction Details" />
                   <div className="grid grid-cols-4 gap-3">
-                    <InfoCell label="DOCUMENT NUMBER"    value={d.transaction.documentNumber} mono/>
-                    <InfoCell label="AMOUNT"             value={d.transaction.amount}/>
-                    <InfoCell label="POSTING DATE"       value={d.transaction.postingDate}/>
-                    <InfoCell label="DOCUMENT DATE"      value={d.transaction.documentDate}/>
-                    <InfoCell label="COMPANY CODE"       value={d.transaction.companyCode}/>
-                    <InfoCell label="FISCAL YEAR/PERIOD" value={d.transaction.fiscalYearPeriod}/>
-                    <InfoCell label="REFERENCE"          value={d.transaction.reference} mono/>
-                    <InfoCell label="HEADER TEXT"        value={d.transaction.headerText} cls="col-span-4"/>
+                    <InfoCell label="DOCUMENT NUMBER" value={d.transaction.documentNumber} mono />
+                    <InfoCell label="AMOUNT" value={d.transaction.amount} />
+                    <InfoCell label="POSTING DATE" value={d.transaction.postingDate} />
+                    <InfoCell label="DOCUMENT DATE" value={d.transaction.documentDate} />
+                    <InfoCell label="COMPANY CODE" value={d.transaction.companyCode} />
+                    <InfoCell label="FISCAL YEAR/PERIOD" value={d.transaction.fiscalYearPeriod} />
+                    <InfoCell label="REFERENCE" value={d.transaction.reference} mono />
+                    <InfoCell label="HEADER TEXT" value={d.transaction.headerText} cls="col-span-4" />
                   </div>
                 </section>
 
                 {/* User Info */}
                 <section>
-                  <Sh dot="bg-blue-500" label="User Information"/>
+                  <Sh dot="bg-blue-500" label="User Information" />
                   <div className="grid grid-cols-4 gap-3">
-                    <InfoCell label="USER ID"    value={d.userInfo.userId} mono/>
-                    <InfoCell label="USER NAME"  value={d.userInfo.userName}/>
-                    <InfoCell label="ROLE"       value={d.userInfo.role}/>
-                    <InfoCell label="DEPARTMENT" value={d.userInfo.department}/>
-                    <InfoCell label="LOCATION"   value={d.userInfo.location}/>
-                    <InfoCell label="LAST LOGIN" value={d.userInfo.lastLogin}/>
-                    <InfoCell label="IP ADDRESS" value={d.userInfo.ipAddress} mono/>
+                    <InfoCell label="USER ID" value={d.userInfo.userId} mono />
+                    <InfoCell label="USER NAME" value={d.userInfo.userName} />
+                    <InfoCell label="ROLE" value={d.userInfo.role} />
+                    <InfoCell label="DEPARTMENT" value={d.userInfo.department} />
+                    <InfoCell label="LOCATION" value={d.userInfo.location} />
+                    <InfoCell label="LAST LOGIN" value={d.userInfo.lastLogin} />
+                    <InfoCell label="IP ADDRESS" value={d.userInfo.ipAddress} mono />
                   </div>
                 </section>
 
                 {/* Customer Details */}
                 <section>
-                  <Sh dot="bg-blue-500" label="Customer Details"/>
+                  <Sh dot="bg-blue-500" label="Customer Details" />
                   <div className="grid grid-cols-4 gap-3">
-                    <InfoCell label="ID"            value={d.customerDetails.id} mono/>
-                    <InfoCell label="NAME"          value={d.customerDetails.name} cls="col-span-2"/>
-                    <InfoCell label="ACCOUNT GROUP" value={d.customerDetails.accountGroup}/>
-                    <InfoCell label="COUNTRY"       value={d.customerDetails.country}/>
-                    <InfoCell label="CITY"          value={d.customerDetails.city}/>
-                    <InfoCell label="CREATED DATE"  value={d.customerDetails.createdDate}/>
-                    <InfoCell label="CHANGED DATE"  value={d.customerDetails.changedDate}/>
-                    <InfoCell label="PAYMENT TERMS" value={d.customerDetails.paymentTerms}/>
-                    <InfoCell label="BANK ACCOUNT"  value={d.customerDetails.bankAccount} mono cls="col-span-3"/>
+                    <InfoCell label="ID" value={d.customerDetails.id} mono />
+                    <InfoCell label="NAME" value={d.customerDetails.name} cls="col-span-2" />
+                    <InfoCell label="ACCOUNT GROUP" value={d.customerDetails.accountGroup} />
+                    <InfoCell label="COUNTRY" value={d.customerDetails.country} />
+                    <InfoCell label="CITY" value={d.customerDetails.city} />
+                    <InfoCell label="CREATED DATE" value={d.customerDetails.createdDate} />
+                    <InfoCell label="CHANGED DATE" value={d.customerDetails.changedDate} />
+                    <InfoCell label="PAYMENT TERMS" value={d.customerDetails.paymentTerms} />
+                    <InfoCell label="BANK ACCOUNT" value={d.customerDetails.bankAccount} mono cls="col-span-3" />
                   </div>
                 </section>
 
                 {/* Anomaly Indicators */}
                 <section>
-                  <Sh dot="bg-orange-500" label={`Anomaly Indicators (${d.anomalyIndicators.length})`}/>
+                  <Sh dot="bg-orange-500" label={`Anomaly Indicators (${d.anomalyIndicators.length})`} />
                   <div className="space-y-2">
-                    {d.anomalyIndicators.map((a,i)=>{
-                      const bg=a.severity==="critical"?"bg-red-500/10 border-red-500/20":a.severity==="high"?"bg-orange-500/10 border-orange-500/20":"bg-amber-500/10 border-amber-500/20";
-                      const ic=a.severity==="critical"?"text-red-400":a.severity==="high"?"text-orange-400":"text-amber-400";
+                    {d.anomalyIndicators.map((a, i) => {
+                      const bg = a.severity === "critical" ? "bg-red-500/10 border-red-500/20" : a.severity === "high" ? "bg-orange-500/10 border-orange-500/20" : "bg-amber-500/10 border-amber-500/20";
+                      const ic = a.severity === "critical" ? "text-red-400" : a.severity === "high" ? "text-orange-400" : "text-amber-400";
                       return (
                         <div key={i} className={`flex items-start gap-3 p-3.5 rounded-xl border ${bg}`}>
-                          <Warning size={14} weight="fill" className={`${ic} flex-shrink-0 mt-0.5`}/>
+                          <Warning size={14} weight="fill" className={`${ic} flex-shrink-0 mt-0.5`} />
                           <div>
                             <div className="flex items-center gap-2 mb-0.5">
                               <span className="text-[12px] font-semibold text-[var(--text)]">{a.name}</span>
-                              <SevBadge sev={a.severity}/>
+                              <SevBadge sev={a.severity} />
                             </div>
                             <p className={`text-[11px] ${ic}`}>{a.desc}</p>
                           </div>
@@ -508,16 +508,16 @@ function CaseModal({caseId, onClose, onUpdate}) {
 
                 {/* Related Transactions */}
                 <section>
-                  <Sh dot="bg-blue-500" label={`Related Transactions (${d.relatedTransactions.length})`}/>
+                  <Sh dot="bg-blue-500" label={`Related Transactions (${d.relatedTransactions.length})`} />
                   <div className="rounded-xl border border-[var(--border)] overflow-hidden">
                     <table className="w-full text-sm">
                       <thead className="bg-white/[0.03] border-b border-[var(--border)]">
-                        <tr>{["DOCUMENT ID","TYPE","DATE","AMOUNT","STATUS"].map(h=>(
+                        <tr>{["DOCUMENT ID", "TYPE", "DATE", "AMOUNT", "STATUS"].map(h => (
                           <th key={h} className="px-4 py-2.5 text-left text-[10px] font-semibold text-[var(--muted)] tracking-widest uppercase">{h}</th>
                         ))}</tr>
                       </thead>
                       <tbody className="divide-y divide-[var(--border)]">
-                        {d.relatedTransactions.map((t,i)=>(
+                        {d.relatedTransactions.map((t, i) => (
                           <tr key={i} className="hover:bg-white/[0.02]">
                             <td className="px-4 py-2.5 text-[11px] font-mono text-blue-400">{t.docId}</td>
                             <td className="px-4 py-2.5 text-[12px] text-[var(--text)]">{t.type}</td>
@@ -533,13 +533,13 @@ function CaseModal({caseId, onClose, onUpdate}) {
 
                 {/* Audit Trail */}
                 <section>
-                  <Sh dot="bg-blue-500" label="Audit Trail"/>
+                  <Sh dot="bg-blue-500" label="Audit Trail" />
                   <div>
-                    {d.auditTrail.map((a,i)=>(
+                    {d.auditTrail.map((a, i) => (
                       <div key={i} className="flex gap-4 pb-4">
                         <div className="flex flex-col items-center">
-                          <div className="w-2.5 h-2.5 rounded-full bg-blue-500 flex-shrink-0 mt-1"/>
-                          {i<d.auditTrail.length-1&&<div className="w-px flex-1 bg-[var(--border)] mt-1"/>}
+                          <div className="w-2.5 h-2.5 rounded-full bg-blue-500 flex-shrink-0 mt-1" />
+                          {i < d.auditTrail.length - 1 && <div className="w-px flex-1 bg-[var(--border)] mt-1" />}
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center justify-between">
@@ -556,11 +556,11 @@ function CaseModal({caseId, onClose, onUpdate}) {
 
                 {/* Attachments */}
                 <section>
-                  <Sh dot="bg-blue-500" label={`Attachments (${d.attachments.length})`}/>
+                  <Sh dot="bg-blue-500" label={`Attachments (${d.attachments.length})`} />
                   <div className="grid grid-cols-2 gap-3">
-                    {d.attachments.map((a,i)=>(
+                    {d.attachments.map((a, i) => (
                       <div key={i} className="flex items-center gap-3 p-3 rounded-xl border border-[var(--border)] bg-white/[0.02] hover:bg-white/[0.04] cursor-pointer transition-colors">
-                        <div className="w-9 h-9 rounded-lg bg-blue-500/15 flex items-center justify-center flex-shrink-0"><FileText size={16} className="text-blue-400"/></div>
+                        <div className="w-9 h-9 rounded-lg bg-blue-500/15 flex items-center justify-center flex-shrink-0"><FileText size={16} className="text-blue-400" /></div>
                         <div>
                           <p className="text-[12px] font-medium text-[var(--text)]">{a.name}</p>
                           <div className="flex items-center gap-1.5 mt-0.5">
@@ -579,9 +579,9 @@ function CaseModal({caseId, onClose, onUpdate}) {
                   <div>
                     <p className="text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-2">Evidence</p>
                     <div className="space-y-1.5">
-                      {d.evidence.map((e,i)=>(
+                      {d.evidence.map((e, i) => (
                         <div key={i} className="flex items-center gap-2.5 text-[12px] text-[var(--text)]">
-                          <FileText size={12} className="text-blue-400 flex-shrink-0"/>{e}
+                          <FileText size={12} className="text-blue-400 flex-shrink-0" />{e}
                         </div>
                       ))}
                     </div>
@@ -589,9 +589,9 @@ function CaseModal({caseId, onClose, onUpdate}) {
                   <div>
                     <p className="text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-2">AI Recommendations</p>
                     <div className="p-4 rounded-xl border border-[var(--border)] bg-white/[0.015] space-y-2">
-                      {d.aiRecommendations.map((r,i)=>(
+                      {d.aiRecommendations.map((r, i) => (
                         <div key={i} className="flex items-center gap-2.5 text-[12px] text-[var(--text)]">
-                          <CheckCircle size={13} weight="fill" className="text-teal-400 flex-shrink-0"/>{r}
+                          <CheckCircle size={13} weight="fill" className="text-teal-400 flex-shrink-0" />{r}
                         </div>
                       ))}
                     </div>
@@ -602,73 +602,73 @@ function CaseModal({caseId, onClose, onUpdate}) {
                 <section>
                   <Sh dot="bg-teal-500" label="Mitigation Tasks"
                     rightEl={
-                      <button onClick={()=>setShowTaskForm(p=>!p)}
+                      <button onClick={() => setShowTaskForm(p => !p)}
                         className="flex items-center gap-1 text-[12px] text-blue-400 hover:text-blue-300 font-semibold transition-colors">
-                        <Plus size={13} weight="bold"/>+ Add Task
+                        <Plus size={13} weight="bold" />+ Add Task
                       </button>
                     }
                   />
 
                   {/* Task form — only when + Add Task clicked */}
-                  {showTaskForm&&(
+                  {showTaskForm && (
                     <div className="p-4 rounded-xl border border-[var(--border)] bg-white/[0.015] space-y-3 mb-3">
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <label className="block text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1">TASK TITLE *</label>
-                          <input value={taskForm.title} onChange={e=>setTaskForm(p=>({...p,title:e.target.value}))}
+                          <input value={taskForm.title} onChange={e => setTaskForm(p => ({ ...p, title: e.target.value }))}
                             placeholder="e.g., Review vendor bank account"
-                            className="w-full px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[12px] text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--primary)]"/>
+                            className="w-full px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[12px] text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--primary)]" />
                         </div>
                         <div>
                           <label className="block text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1">ASSIGN TO *</label>
-                          <select value={taskForm.assignTo} onChange={e=>setTaskForm(p=>({...p,assignTo:e.target.value}))}
+                          <select value={taskForm.assignTo} onChange={e => setTaskForm(p => ({ ...p, assignTo: e.target.value }))}
                             className="w-full px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[12px] text-[var(--text)] focus:outline-none focus:border-[var(--primary)]">
                             <option value="">Select task processor...</option>
-                            {TASK_PROCESSORS.map(p=><option key={p}>{p}</option>)}
+                            {TASK_PROCESSORS.map(p => <option key={p}>{p}</option>)}
                           </select>
                         </div>
                       </div>
                       <div>
                         <label className="block text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1">DESCRIPTION</label>
-                        <textarea value={taskForm.description} onChange={e=>setTaskForm(p=>({...p,description:e.target.value}))}
+                        <textarea value={taskForm.description} onChange={e => setTaskForm(p => ({ ...p, description: e.target.value }))}
                           placeholder="Provide task details..." rows={2}
-                          className="w-full px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[12px] text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--primary)] resize-none"/>
+                          className="w-full px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[12px] text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--primary)] resize-none" />
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <label className="block text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1">PRIORITY</label>
-                          <select value={taskForm.priority} onChange={e=>setTaskForm(p=>({...p,priority:e.target.value}))}
+                          <select value={taskForm.priority} onChange={e => setTaskForm(p => ({ ...p, priority: e.target.value }))}
                             className="w-full px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[12px] text-[var(--text)] focus:outline-none focus:border-[var(--primary)]">
-                            {["Low","Medium","High","Critical"].map(p=><option key={p}>{p}</option>)}
+                            {["Low", "Medium", "High", "Critical"].map(p => <option key={p}>{p}</option>)}
                           </select>
                         </div>
                         <div>
                           <label className="block text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1">DUE DATE *</label>
-                          <input type="date" value={taskForm.dueDate} onChange={e=>setTaskForm(p=>({...p,dueDate:e.target.value}))}
-                            className="w-full px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[12px] text-[var(--text)] focus:outline-none focus:border-[var(--primary)]"/>
+                          <input type="date" value={taskForm.dueDate} onChange={e => setTaskForm(p => ({ ...p, dueDate: e.target.value }))}
+                            className="w-full px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[12px] text-[var(--text)] focus:outline-none focus:border-[var(--primary)]" />
                         </div>
                       </div>
-                      {taskError&&<p className="text-[11px] text-red-400 flex items-center gap-1"><Warning size={11}/>{taskError}</p>}
+                      {taskError && <p className="text-[11px] text-red-400 flex items-center gap-1"><Warning size={11} />{taskError}</p>}
                       <div className="flex gap-2">
                         <button onClick={handleCreateTask} disabled={taskSaving}
                           className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-[12px] font-semibold disabled:opacity-50 transition-colors">
-                          {taskSaving&&<CircleNotch size={11} className="animate-spin"/>}Create Task
+                          {taskSaving && <CircleNotch size={11} className="animate-spin" />}Create Task
                         </button>
-                        <button onClick={()=>{setShowTaskForm(false);setTaskError("");}}
+                        <button onClick={() => { setShowTaskForm(false); setTaskError(""); }}
                           className="px-4 py-2 rounded-lg border border-[var(--border)] text-[var(--muted)] text-[12px] hover:bg-white/5 transition-colors">Cancel</button>
                       </div>
                     </div>
                   )}
 
                   {/* Task list or empty state */}
-                  {tasks.length===0 ? (
+                  {tasks.length === 0 ? (
                     <div className="py-8 text-center border border-dashed border-[var(--border)] rounded-xl">
-                      <CheckCircle size={22} className="text-[var(--muted)] mx-auto mb-2"/>
+                      <CheckCircle size={22} className="text-[var(--muted)] mx-auto mb-2" />
                       <p className="text-[11px] text-[var(--muted)]">No tasks created yet. Click "Add Task" to create mitigation tasks.</p>
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {tasks.map(t=>(
+                      {tasks.map(t => (
                         <div key={t.id} className="flex items-center justify-between p-3 rounded-lg bg-white/[0.02] border border-[var(--border)]">
                           <div>
                             <p className="text-[12px] font-semibold text-[var(--text)]">{t.title}</p>
@@ -692,9 +692,12 @@ function CaseModal({caseId, onClose, onUpdate}) {
             {isClosed ? (
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <CheckCircle size={16} weight="fill" className="text-emerald-400"/>
+                  <CheckCircle size={16} weight="fill" className="text-emerald-400" />
                   <span className="text-[12px] text-emerald-400 font-semibold">
-                    Case closed — {data.closureStatus}
+                    Case closed —
+                    <span className="ml-1 px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/30">
+                      {data.closureStatus}
+                    </span>
                   </span>
                 </div>
                 <button onClick={onClose} className="px-4 py-2 rounded-lg bg-[#1e2030] border border-[var(--border)] text-[var(--text)] text-[12px] font-semibold hover:bg-white/5 transition-colors">
@@ -706,13 +709,13 @@ function CaseModal({caseId, onClose, onUpdate}) {
               /* UNASSIGNED — show Assign to Me + Assign to Analyst */
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <button onClick={()=>handleAssign("Admin")}
+                  <button onClick={() => handleAssign("Admin")}
                     className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--primary)] hover:opacity-90 text-white text-[12px] font-semibold transition-opacity">
-                    <UserCircle size={13}/> Assign to Me
+                    <UserCircle size={13} /> Assign to Me
                   </button>
-                  <button onClick={()=>setShowAssign(true)}
+                  <button onClick={() => setShowAssign(true)}
                     className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[var(--border)] text-[var(--text)] text-[12px] font-semibold hover:bg-white/5 transition-colors">
-                    <UserPlus size={13}/> Assign to Analyst
+                    <UserPlus size={13} /> Assign to Analyst
                   </button>
                 </div>
                 <button onClick={onClose} className="px-3.5 py-2 rounded-lg bg-[#1e2030] border border-[var(--border)] text-[var(--text)] text-[12px] font-semibold hover:bg-white/5 transition-colors">
@@ -725,27 +728,27 @@ function CaseModal({caseId, onClose, onUpdate}) {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 flex-wrap">
                   {/* Reassign Case — outline */}
-                  <button disabled={saving} onClick={()=>handleAction("Reassign")}
+                  <button disabled={saving} onClick={() => handleAction("Reassign")}
                     className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[var(--border)] text-[var(--text)] text-[12px] font-semibold hover:bg-white/5 transition-colors disabled:opacity-50">
-                    <UserCircle size={13}/>Reassign Case
+                    <UserCircle size={13} />Reassign Case
                   </button>
                   {/* Escalate to Senior Team — amber */}
-                  <button disabled={saving} onClick={()=>handleAction("Escalate")}
+                  <button disabled={saving} onClick={() => handleAction("Escalate")}
                     className="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-white text-[12px] font-semibold transition-colors disabled:opacity-50">
                     Escalate to Senior Team
                   </button>
                   {/* Confirmed — red */}
-                  <button disabled={saving} onClick={()=>handleAction("Confirmed")}
+                  <button disabled={saving} onClick={() => handleAction("Confirmed")}
                     className="px-3.5 py-2 rounded-lg bg-red-500 hover:bg-red-400 text-white text-[12px] font-semibold transition-colors disabled:opacity-50">
-                    {saving&&<CircleNotch size={11} className="animate-spin inline mr-1"/>}Confirmed
+                    {saving && <CircleNotch size={11} className="animate-spin inline mr-1" />}Confirmed
                   </button>
                   {/* False Positive — dark neutral */}
-                  <button disabled={saving} onClick={()=>handleAction("FalsePositive")}
+                  <button disabled={saving} onClick={() => handleAction("FalsePositive")}
                     className="px-3.5 py-2 rounded-lg bg-[#2a2a35] border border-[var(--border)] text-[var(--text)] text-[12px] font-semibold hover:bg-[#333] transition-colors disabled:opacity-50">
                     False Positive
                   </button>
                   {/* No Action Needed — green */}
-                  <button disabled={saving} onClick={()=>handleAction("NoAction")}
+                  <button disabled={saving} onClick={() => handleAction("NoAction")}
                     className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[12px] font-semibold transition-colors disabled:opacity-50">
                     No Action Needed
                   </button>
@@ -760,59 +763,59 @@ function CaseModal({caseId, onClose, onUpdate}) {
       </div>
 
       {/* Investigator assign panel */}
-      {showAssign&&(
+      {showAssign && (
         <AssignPanel
           caseId={caseId}
           currentUser="Admin"
           onAssign={handleAssign}
-          onClose={()=>setShowAssign(false)}
+          onClose={() => setShowAssign(false)}
         />
       )}
 
       {/* In-modal toast (replaces browser alert) */}
-      {toast&&<Toast msg={toast} onClose={()=>setToast(null)}/>}
+      {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
     </>
   );
 }
 
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 export default function CaseManagement() {
-  const location   = useLocation();
-  const [cases,    setCases]   = useState([]);
-  const [loading,  setLoading] = useState(true);
-  const [search,   setSearch]  = useState("");
-  const [statusF,  setStatusF] = useState("All Status");
-  const [closureF, setClosureF]= useState("All Resolutions");
-  const [selected, setSelected]= useState(null);
-  const [checked,  setChecked] = useState(new Set());
+  const location = useLocation();
+  const [cases, setCases] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [statusF, setStatusF] = useState("All Status");
+  const [closureF, setClosureF] = useState("All Resolutions");
+  const [selected, setSelected] = useState(null);
+  const [checked, setChecked] = useState(new Set());
 
-  useEffect(()=>{
+  useEffect(() => {
     // Support navigation from dashboard with pre-set status filter
-    if(location.state?.statusFilter) setStatusF(location.state.statusFilter);
-    fetchCasesAPI().then(r=>{ if(r.success) setCases(r.data); setLoading(false); });
-  },[]);
+    if (location.state?.statusFilter) setStatusF(location.state.statusFilter);
+    fetchCasesAPI().then(r => { if (r.success) setCases(r.data); setLoading(false); });
+  }, []);
 
-  const filtered = cases.filter(c=>{
-    const q=search.toLowerCase();
-    return (!q||c.id.toLowerCase().includes(q)||c.ruleName.toLowerCase().includes(q)||c.title.toLowerCase().includes(q))
-      &&(statusF==="All Status"||c.status===statusF)
-      &&(closureF==="All Resolutions"||c.closureStatus===closureF||(closureF==="Pending"&&!c.closureStatus));
+  const filtered = cases.filter(c => {
+    const q = search.toLowerCase();
+    return (!q || c.id.toLowerCase().includes(q) || c.ruleName.toLowerCase().includes(q) || c.title.toLowerCase().includes(q))
+      && (statusF === "All Status" || c.status === statusF)
+      && (closureF === "All Resolutions" || c.closureStatus === closureF || (closureF === "Pending" && !c.closureStatus));
   });
 
-  const handleUpdate = useCallback((id,updates)=>setCases(prev=>prev.map(c=>c.id===id?{...c,...updates}:c)),[]);
-  const toggleCheck=id=>setChecked(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n;});
-  const allIds=filtered.map(c=>c.id);
-  const allChecked=allIds.length>0&&allIds.every(id=>checked.has(id));
-  const selCls="px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[12px] text-[var(--text)] focus:outline-none focus:border-[var(--primary)] cursor-pointer";
+  const handleUpdate = useCallback((id, updates) => setCases(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c)), []);
+  const toggleCheck = id => setChecked(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const allIds = filtered.map(c => c.id);
+  const allChecked = allIds.length > 0 && allIds.every(id => checked.has(id));
+  const selCls = "px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[12px] text-[var(--text)] focus:outline-none focus:border-[var(--primary)] cursor-pointer";
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--bg)]">
-      <Sidebar/>
+      <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Topbar/>
-        <div className="flex-1 overflow-y-auto" style={{scrollbarWidth:"none"}}>
+        <Topbar />
+        <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
           <style>{`.no-scroll::-webkit-scrollbar{display:none}`}</style>
-          <div className="no-scroll px-6 py-5 space-y-4">
+          <div className="no-scroll max-w-7xl mx-auto px-2 py-8 space-y-4">
 
             <div className="flex items-start justify-between">
               <div>
@@ -824,26 +827,26 @@ export default function CaseManagement() {
 
             <div className="flex items-center gap-2.5">
               <div className="relative flex-1">
-                <MagnifyingGlass className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--muted)]"/>
-                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by case ID, title, or rule name..."
-                  className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[13px] text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--primary)]"/>
+                <MagnifyingGlass className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--muted)]" />
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by case ID, title, or rule name..."
+                  className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[13px] text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--primary)]" />
               </div>
-              <FunnelSimple size={16} className="text-[var(--muted)] flex-shrink-0"/>
-              <select value={statusF} onChange={e=>setStatusF(e.target.value)} className={selCls}>
+              <FunnelSimple size={16} className="text-[var(--muted)] flex-shrink-0" />
+              <select value={statusF} onChange={e => setStatusF(e.target.value)} className={selCls}>
                 <option>All Status</option>
-                {["New","Investigating","AI Assisted","Escalated","Closed"].map(s=><option key={s}>{s}</option>)}
+                {["New", "Investigating", "AI Assisted", "Escalated", "Closed"].map(s => <option key={s}>{s}</option>)}
               </select>
-              <FunnelSimple size={16} className="text-[var(--muted)] flex-shrink-0"/>
-              <select value={closureF} onChange={e=>setClosureF(e.target.value)} className={selCls}>
+              <FunnelSimple size={16} className="text-[var(--muted)] flex-shrink-0" />
+              <select value={closureF} onChange={e => setClosureF(e.target.value)} className={selCls}>
                 <option>All Resolutions</option>
-                {["Confirmed","False Positive","No Action","Pending"].map(s=><option key={s}>{s}</option>)}
+                {["Confirmed", "False Positive", "No Action", "Pending"].map(s => <option key={s}>{s}</option>)}
               </select>
               <span className="text-[12px] font-semibold text-[var(--text)] px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--card)] whitespace-nowrap">{filtered.length} results</span>
             </div>
 
             {loading ? (
               <div className="rounded-xl border border-[var(--border)] p-12 flex items-center justify-center gap-3 bg-[var(--card)]">
-                <CircleNotch size={20} className="animate-spin text-blue-400"/>
+                <CircleNotch size={20} className="animate-spin text-blue-400" />
                 <span className="text-sm text-[var(--muted)]">Loading cases...</span>
               </div>
             ) : (
@@ -853,35 +856,35 @@ export default function CaseManagement() {
                     <tr className="border-b border-[var(--border)] bg-[var(--bg)]">
                       <th className="px-4 py-3 w-10">
                         <input type="checkbox" checked={allChecked}
-                          onChange={e=>setChecked(e.target.checked?new Set(allIds):new Set())}
-                          className="w-4 h-4 rounded border-gray-600 cursor-pointer accent-[var(--primary)]"/>
+                          onChange={e => setChecked(e.target.checked ? new Set(allIds) : new Set())}
+                          className="w-4 h-4 rounded border-gray-600 cursor-pointer accent-[var(--primary)]" />
                       </th>
-                      {["CASE ID","RISK","TITLE","RULE","STATUS","CLOSURE STATUS","ASSIGNEE"].map(h=>(
+                      {["CASE ID", "RISK", "TITLE", "RULE", "STATUS", "CLOSURE STATUS", "ASSIGNEE"].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-[var(--muted)] tracking-widest uppercase whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border)]">
-                    {filtered.length===0&&<tr><td colSpan={8} className="px-4 py-12 text-center text-[var(--muted)] text-sm">No cases match your filters.</td></tr>}
-                    {filtered.map(c=>(
-                      <tr key={c.id} onClick={()=>setSelected(c.id)}
-                        className={`cursor-pointer transition-colors ${checked.has(c.id)?"bg-[var(--primary)]/5":"hover:bg-white/[0.025]"}`}>
-                        <td className="px-4 py-3.5" onClick={e=>{e.stopPropagation();toggleCheck(c.id);}}>
-                          <input type="checkbox" checked={checked.has(c.id)} onChange={()=>toggleCheck(c.id)} className="w-4 h-4 rounded border-gray-600 cursor-pointer accent-[var(--primary)]"/>
+                    {filtered.length === 0 && <tr><td colSpan={8} className="px-4 py-12 text-center text-[var(--muted)] text-sm">No cases match your filters.</td></tr>}
+                    {filtered.map(c => (
+                      <tr key={c.id} onClick={() => setSelected(c.id)}
+                        className={`cursor-pointer transition-colors ${checked.has(c.id) ? "bg-[var(--primary)]/5" : "hover:bg-white/[0.025]"}`}>
+                        <td className="px-4 py-3.5" onClick={e => { e.stopPropagation(); toggleCheck(c.id); }}>
+                          <input type="checkbox" checked={checked.has(c.id)} onChange={() => toggleCheck(c.id)} className="w-4 h-4 rounded border-gray-600 cursor-pointer accent-[var(--primary)]" />
                         </td>
                         <td className="px-4 py-3.5"><span className="text-[12px] font-mono font-medium text-[var(--text)]">{c.id}</span></td>
                         <td className="px-4 py-3.5"><span className={`text-[14px] font-bold ${RISK_COLOR(c.riskScore)}`}>{c.riskScore}</span></td>
                         <td className="px-4 py-3.5 max-w-[200px]">
                           <p className="text-[13px] font-medium text-[var(--text)] truncate">{c.title}</p>
-                          <p className={`text-[10px] font-semibold ${ENV_CLS[c.environment]||"text-[var(--muted)]"}`}>Env: {c.environment}</p>
+                          <p className={`text-[10px] font-semibold ${ENV_CLS[c.environment] || "text-[var(--muted)]"}`}>Env: {c.environment}</p>
                         </td>
                         <td className="px-4 py-3.5 max-w-[180px]">
                           <p className="text-[12px] text-blue-400 font-medium truncate hover:underline">{c.ruleName}</p>
                           <p className="text-[10px] font-mono text-[var(--muted)]">{c.ruleId}</p>
                         </td>
-                        <td className="px-4 py-3.5"><StatusBadge status={c.status}/></td>
-                        <td className="px-4 py-3.5">{c.closureStatus?<span className="text-[12px] text-[var(--text)]">{c.closureStatus}</span>:<span className="text-[12px] text-[var(--muted)]">—</span>}</td>
-                        <td className="px-4 py-3.5"><AssigneeChip name={c.assignee}/></td>
+                        <td className="px-4 py-3.5"><StatusBadge status={c.status} /></td>
+                        <td className="px-4 py-3.5">{c.closureStatus ? <span className="text-[12px] text-[var(--text)]">{c.closureStatus}</span> : <span className="text-[12px] text-[var(--muted)]">—</span>}</td>
+                        <td className="px-4 py-3.5"><AssigneeChip name={c.assignee} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -892,7 +895,7 @@ export default function CaseManagement() {
         </div>
       </div>
 
-      {selected&&<CaseModal caseId={selected} onClose={()=>setSelected(null)} onUpdate={handleUpdate}/>}
+      {selected && <CaseModal caseId={selected} onClose={() => setSelected(null)} onUpdate={handleUpdate} />}
     </div>
   );
 }

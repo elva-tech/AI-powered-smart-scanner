@@ -250,50 +250,49 @@ function ActionBar() {
   };
 
   const buttons = [
-    {
-      label: "Create",
-      Icon: Plus,
-      // Green gradient — "Create" is the primary CTA
-      cls: "bg-gradient-to-b from-green-600 to-green-500 hover:from-green-400 hover:to-green-500 text-white shadow-sm shadow-green-900/40",
-      onClick: () => navigate("/architect"),
-      disabled: false,
-    },
-    {
-      label: "Modify",
-      Icon: PencilSimple,
-      cls: "bg-gradient-to-b from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 text-white shadow-sm shadow-blue-900/40",
-      onClick: () => navigate(selected.length === 1 ? `/architect?ruleId=${selected[0]}` : "/architect"),
-      disabled: !has || bulkLoading,
-    },
-    {
-      label: "Deploy",
-      Icon: Rocket,
-      cls: "bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-white shadow-sm shadow-amber-900/40",
-      onClick: () => dispatch(openModal({ type: "CONFIRM_DEPLOY" })),
-      disabled: !has || bulkLoading,
-    },
-    {
-      label: "Activate",
-      Icon: Play,
-      cls: "bg-gradient-to-b from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white shadow-sm shadow-emerald-900/40",
-      onClick: handleActivate,
-      disabled: !has || bulkLoading,
-    },
-    {
-      label: "Deactivate",
-      Icon: Stop,
-      cls: "bg-gradient-to-b from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white shadow-sm shadow-red-900/40",
-      onClick: () => dispatch(openModal({ type: "CONFIRM_DEACTIVATE" })),
-      disabled: !has || bulkLoading,
-    },
-    {
-      label: "Schedule",
-      Icon: CalendarBlank,
-      cls: "bg-gradient-to-b from-purple-500 to-purple-600 hover:from-purple-400 hover:to-purple-500 text-white shadow-sm shadow-purple-900/40",
-      onClick: handleSchedule,
-      disabled: !has || bulkLoading,
-    },
-  ];
+  {
+    label: "Create",
+    Icon: Plus,
+    cls: "bg-gradient-to-b from-green-600 to-green-500 hover:from-green-400 hover:to-green-500 text-white shadow-sm shadow-green-900/40 rounded-none",
+    onClick: () => navigate("/architect"),
+    disabled: false,
+  },
+  {
+    label: "Modify",
+    Icon: PencilSimple,
+    cls: "bg-gradient-to-b from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 text-white shadow-sm shadow-blue-900/40 rounded-none",
+    onClick: () => navigate(selected.length === 1 ? `/architect?ruleId=${selected[0]}` : "/architect"),
+    disabled: !has || bulkLoading,
+  },
+  {
+    label: "Deploy",
+    Icon: Rocket,
+    cls: "bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-white shadow-sm shadow-amber-900/40 rounded-none",
+    onClick: () => dispatch(openModal({ type: "CONFIRM_DEPLOY" })),
+    disabled: !has || bulkLoading,
+  },
+  {
+    label: "Activate",
+    Icon: Play,
+    cls: "bg-gradient-to-b from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white shadow-sm shadow-emerald-900/40 rounded-none",
+    onClick: handleActivate,
+    disabled: !has || bulkLoading,
+  },
+  {
+    label: "Deactivate",
+    Icon: Stop,
+    cls: "bg-gradient-to-b from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white shadow-sm shadow-red-900/40 rounded-none",
+    onClick: () => dispatch(openModal({ type: "CONFIRM_DEACTIVATE" })),
+    disabled: !has || bulkLoading,
+  },
+  {
+    label: "Schedule",
+    Icon: CalendarBlank,
+    cls: "bg-gradient-to-b from-purple-500 to-purple-600 hover:from-purple-400 hover:to-purple-500 text-white shadow-sm shadow-purple-900/40 rounded-none",
+    onClick: handleSchedule,
+    disabled: !has || bulkLoading,
+  },
+];
 
   return (
     <div className="flex items-center justify-between">
