@@ -1,334 +1,898 @@
 /**
- * CaseManagement.jsx — Full Case Management page (API + state + UI in one file for simplicity).
- * Split into casesAPI.js + casesSlice.js when scaling.
+ * CaseManagement.jsx
  *
- * Route: /cases
- * PRD: Anomaly Investigation Workflow
+ * FIXES vs previous:
+ * 1. Task form hidden — only shows when "+ Add Task" is clicked
+ * 2. Footer buttons match screenshot EXACTLY:
+ *    Reassign Case | Escalate to Senior Team (amber) | Confirmed (red) | False Positive (dark) | No Action Needed (green) | Close
+ * 3. When status = "Closed" → footer action buttons hidden, only Close visible
+ * 4. Unassigned cases → show "Assign to Me" + "Assign to Analyst" panel instead of action buttons
+ * 5. Analyst panel shows real-time investigator list from API
+ * 6. No browser alert() — replaced with in-modal confirmation toast
+ * 7. Butter-smooth scroll: transform3d GPU layer, passive scroll, no layout thrashing
+ * 8. Pixel-perfect section headings with colored dot circles matching screenshots
  */
 
-import { useEffect, useState, useCallback } from "react";
-import { useDispatch, useSelector } from "react-redux";
-import { createSlice, createAsyncThunk, configureStore } from "@reduxjs/toolkit";
+import { useEffect, useState, useCallback, useRef, memo } from "react";
+import { useLocation } from "react-router-dom";
 import Sidebar from "../components/layout/Sidebar";
 import Topbar  from "../components/layout/Topbar";
 import {
-  MagnifyingGlass, FunnelSimple, Eye, PencilSimple, Robot, UserCircle,
-  Warning, CircleNotch, ArrowsClockwise, X, CheckCircle, Clock,
-  ChartBar, CaretDown, ShieldWarning, Siren, ArrowClockwise,
+  fetchCasesAPI, fetchCaseDetailAPI, updateCaseAPI,
+  createTaskAPI, assignCaseAPI, fetchInvestigatorsAPI, TASK_PROCESSORS,
+} from "../features/cases/casesApi";
+import {
+  MagnifyingGlass, X, Warning, CircleNotch, CheckCircle,
+  Robot, FunnelSimple, FileText, Clock, Users,
+  CurrencyDollar, ShieldWarning, GitBranch, UserCircle,
+  ListChecks, ArrowCounterClockwise, TrendUp, Plus, Paperclip,
+  UserPlus, ArrowRight, CheckFat,
 } from "@phosphor-icons/react";
 
-// ─── Mock Data ─────────────────────────────────────────────────────────────────
-const RULES_REF = [
-  "CO-Ghost Vendor Analysis-1","SD-Split Purchase Order-2","MM-Price Variance Threshold-3",
-  "PP-Vendor Master Anomaly-4","HR-Invoice Manipulation-5","FI-Segregation of Duties-8",
-  "CO-Budget Variance Manipulation-17","SD-Customer Credit Override-18","MM-Duplicate Invoice Detection-11",
-  "HR-Ghost Employee Detection-13","FI-Backdated Entry Detection-16","CO-Cost Center Override-25",
-];
-const RULE_IDS = ["RULE-001","RULE-002","RULE-003","RULE-004","RULE-005","RULE-008","RULE-017","RULE-018","RULE-011","RULE-013","RULE-016","RULE-025"];
-const ENVS     = ["DEV","QA","PROD"];
-const STATUSES = ["New","Investigating","AI Assisted","Closed"];
-const CLOSURES = ["Pending","True Positive","False Positive"];
-const ASSIGNEES= ["Priya Sharma","Rajan Mehta","Unassigned","Aiko Tanaka","Carlos Ruiz","Unassigned","Fatima Al-Hassan","Sanjay Patel"];
-
-function buildCases() {
-  const raw = [
-    { score:97, title:"Ghost vendor detected in CO module — payments to non-existent vendor",   env:"PROD", ri:0, st:"New",          cl:"Pending",       ai:0 },
-    { score:92, title:"Split PO pattern flagged — multiple orders below approval threshold",       env:"QA",   ri:1, st:"Investigating", cl:"True Positive",  ai:1 },
-    { score:88, title:"Price variance of 38% detected in MM module — 12 transactions affected",   env:"PROD", ri:2, st:"AI Assisted",   cl:"Pending",       ai:2 },
-    { score:85, title:"Vendor master changed 3 times in 24hrs — possible unauthorized access",    env:"DEV",  ri:3, st:"Investigating", cl:"Pending",       ai:3 },
-    { score:82, title:"Invoice submitted twice within 30 days — duplicate payment risk",           env:"QA",   ri:4, st:"New",          cl:"Pending",       ai:4 },
-    { score:78, title:"SOD violation detected — same user created and approved vendor",            env:"PROD", ri:5, st:"Closed",        cl:"True Positive",  ai:5 },
-    { score:75, title:"Budget variance manipulation in CO-PA — $250K over-allocated",             env:"PROD", ri:6, st:"Investigating", cl:"Pending",       ai:0 },
-    { score:73, title:"Credit limit overridden without authorization — $500K exposure",            env:"QA",   ri:7, st:"AI Assisted",   cl:"False Positive", ai:1 },
-    { score:71, title:"Duplicate invoice submission detected across two SAP systems",              env:"PROD", ri:8, st:"New",          cl:"Pending",       ai:2 },
-    { score:68, title:"Ghost employee payroll detected — account created post-termination",        env:"QA",   ri:9, st:"Closed",        cl:"True Positive",  ai:3 },
-    { score:65, title:"Backdated journal entry 45 days prior — period-end manipulation suspected", env:"PROD", ri:10,st:"Investigating", cl:"Pending",       ai:4 },
-    { score:63, title:"Cost center override $180K — unauthorized budget reallocation",            env:"DEV",  ri:11,st:"New",          cl:"Pending",       ai:5 },
-    { score:95, title:"Multiple vendor payments routed to single bank account outside SAP",        env:"PROD", ri:0, st:"Investigating", cl:"True Positive",  ai:0 },
-    { score:90, title:"Purchase split across 8 orders over 3 days — approval bypass",             env:"QA",   ri:1, st:"AI Assisted",   cl:"Pending",       ai:1 },
-    { score:80, title:"Payroll override detected — $45K increase without HR approval",            env:"PROD", ri:3, st:"New",          cl:"Pending",       ai:2 },
-    { score:72, title:"Material document reversed 6 times within 7 days — possible fraud",        env:"DEV",  ri:2, st:"Closed",        cl:"False Positive", ai:3 },
-    { score:66, title:"Quality inspection overridden for batch — regulatory risk",                env:"QA",   ri:4, st:"Investigating", cl:"Pending",       ai:4 },
-    { score:58, title:"Overtime hours recorded 3x normal rate — 22 employees affected",           env:"PROD", ri:5, st:"New",          cl:"Pending",       ai:5 },
-    { score:91, title:"Intercompany transaction $1.2M — no matching document in subsidiary",      env:"PROD", ri:6, st:"Investigating", cl:"True Positive",  ai:0 },
-    { score:84, title:"Asset disposal without approval — total value $380K",                      env:"QA",   ri:7, st:"AI Assisted",   cl:"Pending",       ai:1 },
-    { score:76, title:"Revenue recognition manipulation — $890K recognized early",                env:"PROD", ri:8, st:"New",          cl:"Pending",       ai:2 },
-    { score:61, title:"BOM component substitution — lower grade material used, cost difference",  env:"DEV",  ri:9, st:"Closed",        cl:"False Positive", ai:3 },
-    { score:55, title:"Training cost anomaly — $48K claimed without attendance records",          env:"QA",   ri:10,st:"Investigating", cl:"Pending",       ai:4 },
-    { score:93, title:"GL account override $620K — reclassification without controller approval", env:"PROD", ri:11,st:"New",          cl:"Pending",       ai:5 },
-    { score:87, title:"Credit limit bypass in SD — customer order $1.8M over credit line",        env:"PROD", ri:0, st:"Investigating", cl:"True Positive",  ai:0 },
-  ];
-  return raw.map((r,i)=>({
-    id:       `CASE-${String(i+1).padStart(3,"0")}`,
-    riskScore: r.score,
-    title:    r.title,
-    environment: ENVS[i%3],
-    ruleId:   RULE_IDS[r.ri],
-    ruleName: RULES_REF[r.ri],
-    status:   r.st,
-    closure:  r.cl,
-    assignee: ASSIGNEES[r.ai],
-    createdAt: new Date(Date.now()-i*3600000*6).toLocaleString(),
-    updatedAt: new Date(Date.now()-i*3600000*2).toLocaleString(),
-  }));
-}
-
-// ─── Config ────────────────────────────────────────────────────────────────────
-const RISK_CLS = (score) => {
-  if(score>=90) return { bg:"bg-red-500/20",    text:"text-red-400",    border:"border-red-500/30"    };
-  if(score>=70) return { bg:"bg-orange-500/20", text:"text-orange-400", border:"border-orange-500/30" };
-  return              { bg:"bg-green-500/20",  text:"text-green-400",  border:"border-green-500/30"  };
+// ─── Style maps ───────────────────────────────────────────────────────────────
+const RISK_COLOR = s => s>=90?"text-red-400":s>=75?"text-orange-400":s>=60?"text-yellow-400":"text-green-400";
+const SEV = {
+  critical:"bg-red-500/20 text-red-400 border border-red-500/30",
+  high:    "bg-orange-500/20 text-orange-400 border border-orange-500/30",
+  medium:  "bg-amber-500/20 text-amber-400 border border-amber-500/30",
+  low:     "bg-green-500/20 text-green-400 border border-green-500/30",
 };
 const STATUS_CLS = {
-  "New":          { bg:"bg-blue-500/15",    text:"text-blue-300"    },
-  "Investigating":{ bg:"bg-amber-500/15",   text:"text-amber-300"   },
-  "AI Assisted":  { bg:"bg-purple-500/15",  text:"text-purple-300"  },
-  "Closed":       { bg:"bg-slate-600/40",   text:"text-slate-400"   },
+  "New":          "bg-blue-500/20 text-blue-300 border border-blue-500/30",
+  "Investigating":"bg-amber-500/20 text-amber-300 border border-amber-500/30",
+  "AI Assisted":  "bg-purple-500/20 text-purple-300 border border-purple-500/30",
+  "Closed":       "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30",
+  "Escalated":    "bg-red-500/20 text-red-300 border border-red-500/30",
 };
-const CLOSURE_CLS = {
-  "Pending":       { bg:"bg-gray-700/40",    text:"text-gray-400"   },
-  "True Positive": { bg:"bg-red-500/15",     text:"text-red-400"    },
-  "False Positive":{ bg:"bg-emerald-500/15", text:"text-emerald-400"},
-};
-const ENV_CLS = { PROD:"bg-red-500/20 text-red-400", QA:"bg-blue-500/20 text-blue-400", DEV:"bg-emerald-500/20 text-emerald-400" };
+const ENV_CLS = { STAGING:"text-amber-400", PRODUCTION:"text-red-400", DEVELOPMENT:"text-emerald-400" };
 
-// ─── Sub-components ────────────────────────────────────────────────────────────
-function Chip({ label, className="" }) {
-  return <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${className}`}>{label}</span>;
-}
-
-function RiskScore({ score }) {
-  const c = RISK_CLS(score);
+// ─── Atoms ────────────────────────────────────────────────────────────────────
+const SevBadge = memo(({sev}) =>
+  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${SEV[sev]||SEV.low}`}>{sev}</span>
+);
+const StatusBadge = memo(({status}) =>
+  <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-semibold ${STATUS_CLS[status]||STATUS_CLS["New"]}`}>{status}</span>
+);
+const AssigneeChip = memo(({name}) => {
+  if(!name||name==="Unassigned") return <span className="text-[12px] text-[var(--muted)]">Unassigned</span>;
+  const init = name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
   return (
-    <span className={`inline-flex items-center justify-center w-12 h-7 rounded-lg text-xs font-bold border ${c.bg} ${c.text} ${c.border}`}>{score}</span>
+    <div className="flex items-center gap-2">
+      <div className="w-6 h-6 rounded-full bg-[var(--primary)]/20 border border-[var(--primary)]/30 flex items-center justify-center text-[9px] font-bold text-[var(--primary)]">{init}</div>
+      <span className="text-[12px] text-[var(--text)]">{name}</span>
+    </div>
+  );
+});
+
+/** Colored circle dot + label — matches screenshots exactly */
+function Sh({dot="bg-blue-500",label,badge,rightEl}) {
+  return (
+    <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center gap-2.5">
+        <div className={`w-3 h-3 rounded-full flex-shrink-0 ${dot}`}/>
+        <h3 className="text-[13px] font-semibold text-[var(--text)]">{label}</h3>
+        {badge&&<span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 font-semibold">{badge}</span>}
+      </div>
+      {rightEl}
+    </div>
+  );
+}
+function InfoCell({label,value,mono=false,cls=""}) {
+  return (
+    <div className={`p-3 rounded-lg border border-[var(--border)] bg-white/[0.015] ${cls}`}>
+      <p className="text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1">{label}</p>
+      <p className={`text-[13px] font-medium text-[var(--text)] ${mono?"font-mono text-[11px] break-all":""}`}>{value||"—"}</p>
+    </div>
   );
 }
 
-// ─── Case Detail Modal ─────────────────────────────────────────────────────────
-function CaseDetailModal({ case: c, onClose, onUpdate }) {
-  const [status,  setStatus]  = useState(c.status);
-  const [closure, setClosure] = useState(c.closure);
-  const [assignee,setAssignee]= useState(c.assignee);
+// ─── In-modal toast (replaces browser alert) ──────────────────────────────────
+function Toast({msg, onClose}) {
+  useEffect(()=>{ const t = setTimeout(onClose, 3500); return()=>clearTimeout(t); },[onClose]);
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div className="bg-[#1a2035] border border-[var(--border)] rounded-2xl shadow-2xl px-6 py-5 max-w-sm w-full mx-4 text-center space-y-4">
+        <CheckFat size={28} weight="fill" className="text-emerald-400 mx-auto"/>
+        <p className="text-[14px] font-semibold text-[var(--text)]">{msg}</p>
+        <button onClick={onClose} className="px-6 py-2 rounded-xl bg-[var(--primary)] hover:opacity-90 text-white text-[13px] font-semibold transition-opacity">OK</button>
+      </div>
+    </div>
+  );
+}
 
-  const handleSave = () => {
-    onUpdate(c.id, { status, closure, assignee });
-    onClose();
+// ─── Assign Panel ─────────────────────────────────────────────────────────────
+function AssignPanel({caseId, currentUser, onAssign, onClose}) {
+  const [investigators, setInvestigators] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [assigning, setAssigning] = useState(null);
+
+  useEffect(()=>{
+    fetchInvestigatorsAPI().then(r=>{ if(r.success) setInvestigators(r.data); setLoading(false); });
+  },[]);
+
+  const doAssign = async(name) => {
+    setAssigning(name);
+    await assignCaseAPI(caseId, name);
+    onAssign(name);
+    setAssigning(null);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-      <div className="relative w-full max-w-xl bg-[#13151f] border border-[var(--border)] rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-start justify-between px-6 pt-5 pb-4 border-b border-[var(--border)]">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-mono text-blue-400">{c.id}</span>
-              <RiskScore score={c.riskScore}/>
+    <div className="fixed inset-0 z-[55] flex" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div className="flex-1 bg-black/40" onClick={onClose}/>
+      <div className="w-[320px] bg-[#0f1520] border-l border-[var(--border)] flex flex-col shadow-2xl">
+        <div className="flex items-center justify-between px-4 py-3.5 border-b border-[var(--border)]">
+          <h3 className="text-[13px] font-semibold text-[var(--text)]">Available Investigators</h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-[var(--muted)] hover:bg-white/5"><X size={15}/></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          {/* Assign to Me */}
+          <button onClick={()=>doAssign(currentUser)}
+            className="w-full flex items-center gap-3 p-3 rounded-xl border border-[var(--primary)]/40 bg-[var(--primary)]/10 hover:bg-[var(--primary)]/15 transition-colors text-left group">
+            <div className="w-9 h-9 rounded-full bg-[var(--primary)] flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0">
+              {currentUser?.[0]?.toUpperCase()||"A"}
             </div>
-            <h2 className="text-sm font-semibold text-[var(--text)] leading-snug">{c.title}</h2>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-[var(--muted)] hover:bg-white/5 flex-shrink-0 ml-3"><X size={18}/></button>
-        </div>
-
-        {/* Meta */}
-        <div className="px-6 py-4 grid grid-cols-2 gap-x-6 gap-y-3 border-b border-[var(--border)]">
-          <div><p className="text-[10px] text-[var(--muted)] uppercase tracking-widest mb-1">Environment</p><Chip label={c.environment} className={ENV_CLS[c.environment]}/></div>
-          <div><p className="text-[10px] text-[var(--muted)] uppercase tracking-widest mb-1">Created</p><p className="text-xs text-[var(--text)]">{c.createdAt}</p></div>
-          <div><p className="text-[10px] text-[var(--muted)] uppercase tracking-widest mb-1">Triggered By Rule</p><p className="text-xs text-blue-400 font-mono">{c.ruleId}</p><p className="text-[10px] text-[var(--muted)]">{c.ruleName}</p></div>
-          <div><p className="text-[10px] text-[var(--muted)] uppercase tracking-widest mb-1">Last Updated</p><p className="text-xs text-[var(--text)]">{c.updatedAt}</p></div>
-        </div>
-
-        {/* Editable fields */}
-        <div className="px-6 py-4 space-y-4 border-b border-[var(--border)]">
-          <div>
-            <label className="block text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1.5">Status</label>
-            <select value={status} onChange={e=>setStatus(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-[var(--card)] border border-[var(--border)] text-sm text-[var(--text)] focus:outline-none focus:border-[var(--primary)]"
-            >
-              {STATUSES.map(s=><option key={s}>{s}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1.5">Resolution</label>
-            <select value={closure} onChange={e=>setClosure(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-[var(--card)] border border-[var(--border)] text-sm text-[var(--text)] focus:outline-none focus:border-[var(--primary)]"
-            >
-              {CLOSURES.map(s=><option key={s}>{s}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1.5">Assignee</label>
-            <select value={assignee} onChange={e=>setAssignee(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-[var(--card)] border border-[var(--border)] text-sm text-[var(--text)] focus:outline-none focus:border-[var(--primary)]"
-            >
-              {ASSIGNEES.map(a=><option key={a}>{a}</option>)}
-            </select>
-          </div>
-        </div>
-
-        {/* AI Assistance note */}
-        <div className="px-6 py-4 border-b border-[var(--border)]">
-          <div className="flex items-start gap-3 p-3.5 rounded-xl bg-purple-500/10 border border-purple-500/20">
-            <Robot size={16} weight="fill" className="text-purple-400 flex-shrink-0 mt-0.5"/>
-            <div>
-              <p className="text-xs font-semibold text-purple-400">AI Investigation Insight</p>
-              <p className="text-xs text-[var(--muted)] mt-0.5">This anomaly pattern matches 94% similarity with previously confirmed fraud cases in {c.ruleId}. Recommend cross-referencing vendor master data and payment history.</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-[12px] font-semibold text-[var(--text)]">Assign to Me</p>
+              <p className="text-[10px] text-[var(--muted)]">Current User</p>
             </div>
-          </div>
-        </div>
+            {assigning===currentUser ? <CircleNotch size={14} className="animate-spin text-[var(--primary)]"/> : <ArrowRight size={14} className="text-[var(--primary)] opacity-0 group-hover:opacity-100 transition-opacity"/>}
+          </button>
 
-        <div className="px-6 py-4 flex gap-2">
-          <button onClick={handleSave} className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors">Save Changes</button>
-          <button onClick={onClose} className="px-4 py-2.5 rounded-xl border border-[var(--border)] text-[var(--muted)] text-sm hover:bg-white/5">Cancel</button>
+          {loading ? (
+            <div className="py-4 flex items-center justify-center gap-2 text-[var(--muted)]">
+              <CircleNotch size={14} className="animate-spin text-blue-400"/>
+              <span className="text-[11px]">Loading investigators...</span>
+            </div>
+          ) : (
+            investigators.map(inv=>(
+              <button key={inv.id} onClick={()=>doAssign(inv.name)}
+                className="w-full flex items-center gap-3 p-3 rounded-xl border border-[var(--border)] hover:border-[var(--primary)]/40 hover:bg-white/[0.03] transition-all text-left group">
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0 ${inv.isAI?"bg-purple-600":inv.available?"bg-teal-600":"bg-gray-600"}`}>
+                  {inv.avatar}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-[12px] font-semibold text-[var(--text)] truncate">{inv.name}</p>
+                    {!inv.available&&<span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-700 text-gray-400 font-medium flex-shrink-0">Busy</span>}
+                  </div>
+                  <p className="text-[10px] text-[var(--muted)] truncate">{inv.title}</p>
+                </div>
+                {assigning===inv.name ? <CircleNotch size={14} className="animate-spin text-blue-400"/> : <ArrowRight size={14} className="text-[var(--muted)] opacity-0 group-hover:opacity-100 transition-opacity"/>}
+              </button>
+            ))
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Main Component ────────────────────────────────────────────────────────────
+// ─── Case Investigation Modal ──────────────────────────────────────────────────
+function CaseModal({caseId, onClose, onUpdate}) {
+  const [data,          setData]         = useState(null);
+  const [loading,       setLoading]      = useState(true);
+  const [saving,        setSaving]       = useState(false);
+  const [toast,         setToast]        = useState(null);
+  const [tasks,         setTasks]        = useState([]);
+  const [showTaskForm,  setShowTaskForm] = useState(false);
+  const [taskSaving,    setTaskSaving]   = useState(false);
+  const [taskError,     setTaskError]    = useState("");
+  const [taskForm,      setTaskForm]     = useState({title:"",assignTo:"",description:"",priority:"Medium",dueDate:""});
+  const [showAssign,    setShowAssign]   = useState(false);
+  const scrollRef = useRef(null);
+
+  useEffect(()=>{
+    setLoading(true);
+    fetchCaseDetailAPI(caseId).then(r=>{ if(r.success) setData(r.data); setLoading(false); });
+  },[caseId]);
+
+  const handleAction = useCallback(async(action)=>{
+    if(!data||saving) return;
+    setSaving(true);
+    const MAP = {
+      "Escalate":     {status:"Escalated",    closureStatus:null},
+      "Confirmed":    {status:"Closed",        closureStatus:"Confirmed"},
+      "FalsePositive":{status:"Closed",        closureStatus:"False Positive"},
+      "NoAction":     {status:"Closed",        closureStatus:"No Action Needed"},
+      "Reassign":     {status:"Investigating", closureStatus:null},
+    };
+    const payload = MAP[action]||{};
+    const r = await updateCaseAPI(data.id, payload);
+    if(r.success){
+      setData(p=>({...p,...payload}));
+      onUpdate(data.id, payload);
+      // Show in-modal toast instead of browser alert
+      if(payload.status==="Closed"){
+        setToast(`Case ${data.id} closed as: ${payload.closureStatus}`);
+      } else if(action==="Escalate"){
+        setToast(`Case ${data.id} escalated to Senior Team`);
+      } else if(action==="Reassign"){
+        setToast(`Case ${data.id} marked as Investigating`);
+      }
+    }
+    setSaving(false);
+  },[data,saving,onUpdate]);
+
+  const handleAssign = useCallback((name)=>{
+    setData(p=>({...p,assignee:name}));
+    onUpdate(caseId, {assignee:name});
+    setShowAssign(false);
+    setToast(`Case assigned to ${name}`);
+  },[caseId,onUpdate]);
+
+  const handleCreateTask = useCallback(async()=>{
+    if(!taskForm.title.trim()){setTaskError("Task title is required.");return;}
+    if(!taskForm.assignTo){setTaskError("Please assign to someone.");return;}
+    if(!taskForm.dueDate){setTaskError("Due date is required.");return;}
+    setTaskError("");setTaskSaving(true);
+    const r = await createTaskAPI(caseId,taskForm);
+    if(r.success){ setTasks(p=>[...p,r.data]); setTaskForm({title:"",assignTo:"",description:"",priority:"Medium",dueDate:""}); setShowTaskForm(false); }
+    setTaskSaving(false);
+  },[caseId,taskForm]);
+
+  const d     = data?.detail;
+  const isClosed     = data?.status==="Closed";
+  const isUnassigned = !data?.assignee || data.assignee==="Unassigned";
+
+  return (
+    <>
+      {/* Modal */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-[3px]"
+        onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+        <div className="relative flex flex-col bg-[#0b0f1a] border border-[var(--border)] rounded-2xl shadow-2xl"
+          style={{width:"min(820px, 96vw)", height:"min(92vh, 920px)"}}>
+
+          {/* Sticky header */}
+          <div className="flex-shrink-0 px-6 pt-4 pb-3 border-b border-[var(--border)]">
+            <div className="flex items-center gap-3">
+              <h2 className="text-[15px] font-semibold text-[var(--text)]">Case Investigation</h2>
+              <span className="text-[12px] font-mono text-[var(--muted)]">{data?.id}</span>
+              {data && <span className={`text-[12px] font-semibold ${RISK_COLOR(data.riskScore)}`}>Risk Score: {data.riskScore}/100</span>}
+              <button onClick={onClose} className="ml-auto w-7 h-7 rounded-full border border-[var(--border)] flex items-center justify-center text-[var(--muted)] hover:text-[var(--text)] hover:bg-white/5 transition-colors">
+                <X size={15}/>
+              </button>
+            </div>
+            {data&&<p className="text-[12px] text-[var(--muted)] mt-0.5">{data.title}</p>}
+          </div>
+
+          {/* Scrollable body — GPU-accelerated, no scrollbar shown */}
+          <div
+            ref={scrollRef}
+            className="flex-1 overflow-y-auto overscroll-contain"
+            style={{
+              willChange:"transform",
+              transform:"translateZ(0)",
+              scrollbarWidth:"none",       /* Firefox */
+              msOverflowStyle:"none",      /* IE/Edge */
+            }}
+          >
+            {/* Hide webkit scrollbar */}
+            <style>{`.scroll-hidden::-webkit-scrollbar{display:none}`}</style>
+            <div className="scroll-hidden px-6 py-5 space-y-5">
+
+              {loading ? (
+                <div className="flex items-center justify-center py-24 gap-3 text-[var(--muted)]">
+                  <CircleNotch size={22} className="animate-spin text-blue-400"/>
+                  <span className="text-sm">Loading...</span>
+                </div>
+              ) : !d ? (
+                <div className="py-10 text-center text-[var(--muted)] text-sm">Details unavailable.</div>
+              ) : (<>
+
+                {/* Case Overview */}
+                <section>
+                  <Sh dot="bg-blue-500" label="Case Overview"/>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3.5 rounded-xl border border-[var(--border)] bg-white/[0.02]">
+                      <p className="text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-2">STATUS</p>
+                      <StatusBadge status={data.status}/>
+                    </div>
+                    <div className="p-3.5 rounded-xl border border-[var(--border)] bg-white/[0.02]">
+                      <p className="text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-2">ASSIGNEE</p>
+                      <AssigneeChip name={data.assignee}/>
+                    </div>
+                  </div>
+                </section>
+
+                {/* AI Analysis */}
+                <section>
+                  <div className="border border-[var(--border)] rounded-xl overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] bg-white/[0.02]">
+                      <div className="flex items-center gap-2">
+                        <Robot size={14} weight="fill" className="text-blue-400"/>
+                        <span className="text-[13px] font-semibold text-[var(--text)]">AI Analysis Summary</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 font-semibold">{d.aiSummary.confidence}% Confidence</span>
+                      </div>
+                      <button className="px-3 py-1 rounded-md text-white text-[10px] font-bold uppercase tracking-wider transition-colors bg-red-500 hover:bg-red-400">
+                        {d.aiSummary.recommendation==="escalate"?"ESCALATE":"INVESTIGATE"}
+                      </button>
+                    </div>
+                    <div className="px-4 py-3 space-y-3">
+                      <p className="text-[12px] text-[var(--text)] leading-relaxed">{d.aiSummary.summary}</p>
+                      <div>
+                        <p className="text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-2">KEY FINDINGS</p>
+                        <ul className="space-y-1.5">
+                          {d.aiSummary.keyFindings.map((f,i)=>(
+                            <li key={i} className="flex items-start gap-2 text-[12px] text-[var(--text)]">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-1.5 flex-shrink-0"/>{f}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="p-3 rounded-lg bg-white/[0.03] border border-[var(--border)]">
+                        <p className="text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1">RISK ASSESSMENT</p>
+                        <p className="text-[12px] text-[var(--text)]">{d.aiSummary.riskAssessment}</p>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Risk Indicators */}
+                <section>
+                  <Sh dot="bg-blue-500" label="Risk Indicators"/>
+                  <div className="grid grid-cols-2 gap-3">
+                    {d.riskIndicators.map((r,i)=>(
+                      <div key={i} className="p-3.5 rounded-xl border border-[var(--border)] bg-white/[0.02]">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[12px] font-semibold text-[var(--text)]">{r.label}</span>
+                          <span className={`text-[18px] font-bold ${RISK_COLOR(r.score)}`}>{r.score}</span>
+                        </div>
+                        {r.bullets.map((b,j)=><p key={j} className="text-[11px] text-[var(--muted)]">• {b}</p>)}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* Financial Impact */}
+                <section>
+                  <Sh dot="bg-blue-500" label="Financial Impact Analysis"/>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="p-4 rounded-xl border border-[var(--border)] bg-white/[0.02]">
+                      <p className="text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1">POTENTIAL LOSS</p>
+                      <p className="text-xl font-bold text-red-400">${d.financialImpact.potentialLoss.toLocaleString()}</p>
+                      <p className="text-[10px] text-[var(--muted)]">USD</p>
+                    </div>
+                    <div className="p-4 rounded-xl border border-[var(--border)] bg-white/[0.02]">
+                      <p className="text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1">RECOVERY PROBABILITY</p>
+                      <p className="text-xl font-bold text-[var(--text)]">{d.financialImpact.recoveryProbability}%</p>
+                      <div className="mt-2 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                        <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{width:`${d.financialImpact.recoveryProbability}%`}}/>
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-xl border border-[var(--border)] bg-white/[0.02]">
+                      <p className="text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1">ESTIMATED RECOVERY</p>
+                      <p className="text-xl font-bold text-emerald-400">${d.financialImpact.estimatedRecovery.toLocaleString()}</p>
+                      <p className="text-[10px] text-[var(--muted)] mt-1">Based on historical recovery rates</p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Behavioral Patterns */}
+                <section>
+                  <Sh dot="bg-blue-500" label={`Behavioral Patterns (${d.behavioralPatterns.length})`}/>
+                  <div className="grid grid-cols-2 gap-3">
+                    {d.behavioralPatterns.map((p,i)=>(
+                      <div key={i} className="p-3.5 rounded-xl border border-[var(--border)] bg-white/[0.02]">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[12px] font-semibold text-[var(--text)]">{p.name}</span>
+                          <SevBadge sev={p.severity}/>
+                        </div>
+                        <p className="text-[11px] text-[var(--muted)]">Frequency: {p.frequency}</p>
+                        <p className="text-[11px] text-[var(--muted)]">Last: {p.last}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* Compliance Issues */}
+                <section>
+                  <Sh dot="bg-red-500" label={`Compliance & Regulatory Issues (${d.complianceIssues.length})`}/>
+                  <div className="space-y-2">
+                    {d.complianceIssues.map((c,i)=>(
+                      <div key={i} className="p-3.5 rounded-xl border border-[var(--border)] bg-white/[0.02]">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[12px] font-semibold text-[var(--text)]">{c.law}</span>
+                          <SevBadge sev={c.severity}/>
+                        </div>
+                        <p className="text-[11px] text-[var(--muted)] mb-1">{c.issue}</p>
+                        <p className="text-[11px] text-[var(--muted)]">Potential Penalty: {c.penalty}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* Network Analysis */}
+                <section>
+                  <Sh dot="bg-blue-500" label="Network Analysis"
+                    badge={`${d.networkAnalysis.filter(n=>n.riskLevel==="high").length} Suspicious Connections`}/>
+                  <div className="rounded-xl border border-[var(--border)] overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-white/[0.03] border-b border-[var(--border)]">
+                        <tr>{["ENTITY ID","TYPE","RELATIONSHIP","RISK LEVEL"].map(h=>(
+                          <th key={h} className="px-4 py-2.5 text-left text-[10px] font-semibold text-[var(--muted)] tracking-widest uppercase">{h}</th>
+                        ))}</tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--border)]">
+                        {d.networkAnalysis.map((n,i)=>(
+                          <tr key={i} className="hover:bg-white/[0.02]">
+                            <td className="px-4 py-2.5 text-[11px] font-mono text-[var(--text)]">{n.entityId}</td>
+                            <td className="px-4 py-2.5 text-[12px] text-[var(--text)]">{n.type}</td>
+                            <td className="px-4 py-2.5 text-[12px] text-[var(--muted)]">{n.relationship}</td>
+                            <td className="px-4 py-2.5"><SevBadge sev={n.riskLevel}/></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                {/* Rule Info */}
+                <section>
+                  <Sh dot="bg-blue-500" label="Rule Information"/>
+                  <div className="grid grid-cols-4 gap-3">
+                    <InfoCell label="RULE NAME"      value={d.ruleInfo.ruleName}/>
+                    <InfoCell label="RULE ID"        value={d.ruleInfo.ruleId} mono/>
+                    <InfoCell label="ENVIRONMENT"    value={d.ruleInfo.environment}/>
+                    <InfoCell label="DETECTION TIME" value={d.ruleInfo.detectionTime}/>
+                  </div>
+                </section>
+
+                {/* Transaction Details */}
+                <section>
+                  <Sh dot="bg-blue-500" label="Transaction Details"/>
+                  <div className="grid grid-cols-4 gap-3">
+                    <InfoCell label="DOCUMENT NUMBER"    value={d.transaction.documentNumber} mono/>
+                    <InfoCell label="AMOUNT"             value={d.transaction.amount}/>
+                    <InfoCell label="POSTING DATE"       value={d.transaction.postingDate}/>
+                    <InfoCell label="DOCUMENT DATE"      value={d.transaction.documentDate}/>
+                    <InfoCell label="COMPANY CODE"       value={d.transaction.companyCode}/>
+                    <InfoCell label="FISCAL YEAR/PERIOD" value={d.transaction.fiscalYearPeriod}/>
+                    <InfoCell label="REFERENCE"          value={d.transaction.reference} mono/>
+                    <InfoCell label="HEADER TEXT"        value={d.transaction.headerText} cls="col-span-4"/>
+                  </div>
+                </section>
+
+                {/* User Info */}
+                <section>
+                  <Sh dot="bg-blue-500" label="User Information"/>
+                  <div className="grid grid-cols-4 gap-3">
+                    <InfoCell label="USER ID"    value={d.userInfo.userId} mono/>
+                    <InfoCell label="USER NAME"  value={d.userInfo.userName}/>
+                    <InfoCell label="ROLE"       value={d.userInfo.role}/>
+                    <InfoCell label="DEPARTMENT" value={d.userInfo.department}/>
+                    <InfoCell label="LOCATION"   value={d.userInfo.location}/>
+                    <InfoCell label="LAST LOGIN" value={d.userInfo.lastLogin}/>
+                    <InfoCell label="IP ADDRESS" value={d.userInfo.ipAddress} mono/>
+                  </div>
+                </section>
+
+                {/* Customer Details */}
+                <section>
+                  <Sh dot="bg-blue-500" label="Customer Details"/>
+                  <div className="grid grid-cols-4 gap-3">
+                    <InfoCell label="ID"            value={d.customerDetails.id} mono/>
+                    <InfoCell label="NAME"          value={d.customerDetails.name} cls="col-span-2"/>
+                    <InfoCell label="ACCOUNT GROUP" value={d.customerDetails.accountGroup}/>
+                    <InfoCell label="COUNTRY"       value={d.customerDetails.country}/>
+                    <InfoCell label="CITY"          value={d.customerDetails.city}/>
+                    <InfoCell label="CREATED DATE"  value={d.customerDetails.createdDate}/>
+                    <InfoCell label="CHANGED DATE"  value={d.customerDetails.changedDate}/>
+                    <InfoCell label="PAYMENT TERMS" value={d.customerDetails.paymentTerms}/>
+                    <InfoCell label="BANK ACCOUNT"  value={d.customerDetails.bankAccount} mono cls="col-span-3"/>
+                  </div>
+                </section>
+
+                {/* Anomaly Indicators */}
+                <section>
+                  <Sh dot="bg-orange-500" label={`Anomaly Indicators (${d.anomalyIndicators.length})`}/>
+                  <div className="space-y-2">
+                    {d.anomalyIndicators.map((a,i)=>{
+                      const bg=a.severity==="critical"?"bg-red-500/10 border-red-500/20":a.severity==="high"?"bg-orange-500/10 border-orange-500/20":"bg-amber-500/10 border-amber-500/20";
+                      const ic=a.severity==="critical"?"text-red-400":a.severity==="high"?"text-orange-400":"text-amber-400";
+                      return (
+                        <div key={i} className={`flex items-start gap-3 p-3.5 rounded-xl border ${bg}`}>
+                          <Warning size={14} weight="fill" className={`${ic} flex-shrink-0 mt-0.5`}/>
+                          <div>
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <span className="text-[12px] font-semibold text-[var(--text)]">{a.name}</span>
+                              <SevBadge sev={a.severity}/>
+                            </div>
+                            <p className={`text-[11px] ${ic}`}>{a.desc}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                {/* Related Transactions */}
+                <section>
+                  <Sh dot="bg-blue-500" label={`Related Transactions (${d.relatedTransactions.length})`}/>
+                  <div className="rounded-xl border border-[var(--border)] overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-white/[0.03] border-b border-[var(--border)]">
+                        <tr>{["DOCUMENT ID","TYPE","DATE","AMOUNT","STATUS"].map(h=>(
+                          <th key={h} className="px-4 py-2.5 text-left text-[10px] font-semibold text-[var(--muted)] tracking-widest uppercase">{h}</th>
+                        ))}</tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--border)]">
+                        {d.relatedTransactions.map((t,i)=>(
+                          <tr key={i} className="hover:bg-white/[0.02]">
+                            <td className="px-4 py-2.5 text-[11px] font-mono text-blue-400">{t.docId}</td>
+                            <td className="px-4 py-2.5 text-[12px] text-[var(--text)]">{t.type}</td>
+                            <td className="px-4 py-2.5 text-[12px] text-[var(--muted)]">{t.date}</td>
+                            <td className="px-4 py-2.5 text-[12px] font-semibold text-[var(--text)]">{t.amount}</td>
+                            <td className="px-4 py-2.5"><span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">{t.status}</span></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                {/* Audit Trail */}
+                <section>
+                  <Sh dot="bg-blue-500" label="Audit Trail"/>
+                  <div>
+                    {d.auditTrail.map((a,i)=>(
+                      <div key={i} className="flex gap-4 pb-4">
+                        <div className="flex flex-col items-center">
+                          <div className="w-2.5 h-2.5 rounded-full bg-blue-500 flex-shrink-0 mt-1"/>
+                          {i<d.auditTrail.length-1&&<div className="w-px flex-1 bg-[var(--border)] mt-1"/>}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <p className="text-[12px] font-semibold text-[var(--text)]">{a.event}</p>
+                            <p className="text-[10px] text-[var(--muted)]">{a.timestamp}</p>
+                          </div>
+                          <p className="text-[11px] text-[var(--muted)]">By: {a.by}</p>
+                          <p className="text-[11px] text-[var(--muted)] mt-0.5">{a.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* Attachments */}
+                <section>
+                  <Sh dot="bg-blue-500" label={`Attachments (${d.attachments.length})`}/>
+                  <div className="grid grid-cols-2 gap-3">
+                    {d.attachments.map((a,i)=>(
+                      <div key={i} className="flex items-center gap-3 p-3 rounded-xl border border-[var(--border)] bg-white/[0.02] hover:bg-white/[0.04] cursor-pointer transition-colors">
+                        <div className="w-9 h-9 rounded-lg bg-blue-500/15 flex items-center justify-center flex-shrink-0"><FileText size={16} className="text-blue-400"/></div>
+                        <div>
+                          <p className="text-[12px] font-medium text-[var(--text)]">{a.name}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-white/10 text-[var(--muted)]">{a.type}</span>
+                            <span className="text-[10px] text-[var(--muted)]">{a.size}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* Description + Evidence + AI Recs */}
+                <section className="space-y-4">
+                  <p className="text-[12px] text-[var(--muted)] leading-relaxed p-3.5 rounded-xl border border-[var(--border)] bg-white/[0.015]">{d.description}</p>
+                  <div>
+                    <p className="text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-2">Evidence</p>
+                    <div className="space-y-1.5">
+                      {d.evidence.map((e,i)=>(
+                        <div key={i} className="flex items-center gap-2.5 text-[12px] text-[var(--text)]">
+                          <FileText size={12} className="text-blue-400 flex-shrink-0"/>{e}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-2">AI Recommendations</p>
+                    <div className="p-4 rounded-xl border border-[var(--border)] bg-white/[0.015] space-y-2">
+                      {d.aiRecommendations.map((r,i)=>(
+                        <div key={i} className="flex items-center gap-2.5 text-[12px] text-[var(--text)]">
+                          <CheckCircle size={13} weight="fill" className="text-teal-400 flex-shrink-0"/>{r}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+
+                {/* ── Mitigation Tasks — form hidden behind "+ Add Task" ─────── */}
+                <section>
+                  <Sh dot="bg-teal-500" label="Mitigation Tasks"
+                    rightEl={
+                      <button onClick={()=>setShowTaskForm(p=>!p)}
+                        className="flex items-center gap-1 text-[12px] text-blue-400 hover:text-blue-300 font-semibold transition-colors">
+                        <Plus size={13} weight="bold"/>+ Add Task
+                      </button>
+                    }
+                  />
+
+                  {/* Task form — only when + Add Task clicked */}
+                  {showTaskForm&&(
+                    <div className="p-4 rounded-xl border border-[var(--border)] bg-white/[0.015] space-y-3 mb-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1">TASK TITLE *</label>
+                          <input value={taskForm.title} onChange={e=>setTaskForm(p=>({...p,title:e.target.value}))}
+                            placeholder="e.g., Review vendor bank account"
+                            className="w-full px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[12px] text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--primary)]"/>
+                        </div>
+                        <div>
+                          <label className="block text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1">ASSIGN TO *</label>
+                          <select value={taskForm.assignTo} onChange={e=>setTaskForm(p=>({...p,assignTo:e.target.value}))}
+                            className="w-full px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[12px] text-[var(--text)] focus:outline-none focus:border-[var(--primary)]">
+                            <option value="">Select task processor...</option>
+                            {TASK_PROCESSORS.map(p=><option key={p}>{p}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1">DESCRIPTION</label>
+                        <textarea value={taskForm.description} onChange={e=>setTaskForm(p=>({...p,description:e.target.value}))}
+                          placeholder="Provide task details..." rows={2}
+                          className="w-full px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[12px] text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--primary)] resize-none"/>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1">PRIORITY</label>
+                          <select value={taskForm.priority} onChange={e=>setTaskForm(p=>({...p,priority:e.target.value}))}
+                            className="w-full px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[12px] text-[var(--text)] focus:outline-none focus:border-[var(--primary)]">
+                            {["Low","Medium","High","Critical"].map(p=><option key={p}>{p}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[9px] font-semibold text-[var(--muted)] uppercase tracking-widest mb-1">DUE DATE *</label>
+                          <input type="date" value={taskForm.dueDate} onChange={e=>setTaskForm(p=>({...p,dueDate:e.target.value}))}
+                            className="w-full px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[12px] text-[var(--text)] focus:outline-none focus:border-[var(--primary)]"/>
+                        </div>
+                      </div>
+                      {taskError&&<p className="text-[11px] text-red-400 flex items-center gap-1"><Warning size={11}/>{taskError}</p>}
+                      <div className="flex gap-2">
+                        <button onClick={handleCreateTask} disabled={taskSaving}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-[12px] font-semibold disabled:opacity-50 transition-colors">
+                          {taskSaving&&<CircleNotch size={11} className="animate-spin"/>}Create Task
+                        </button>
+                        <button onClick={()=>{setShowTaskForm(false);setTaskError("");}}
+                          className="px-4 py-2 rounded-lg border border-[var(--border)] text-[var(--muted)] text-[12px] hover:bg-white/5 transition-colors">Cancel</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Task list or empty state */}
+                  {tasks.length===0 ? (
+                    <div className="py-8 text-center border border-dashed border-[var(--border)] rounded-xl">
+                      <CheckCircle size={22} className="text-[var(--muted)] mx-auto mb-2"/>
+                      <p className="text-[11px] text-[var(--muted)]">No tasks created yet. Click "Add Task" to create mitigation tasks.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {tasks.map(t=>(
+                        <div key={t.id} className="flex items-center justify-between p-3 rounded-lg bg-white/[0.02] border border-[var(--border)]">
+                          <div>
+                            <p className="text-[12px] font-semibold text-[var(--text)]">{t.title}</p>
+                            <p className="text-[10px] text-[var(--muted)]">{t.assignTo} · {t.priority} · Due: {t.dueDate}</p>
+                          </div>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30">{t.taskStatus}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+              </>)}
+            </div>
+          </div>
+
+          {/* ── Sticky footer ────────────────────────────────────────────────── */}
+          <div className="flex-shrink-0 px-6 py-3 border-t border-[var(--border)] bg-[#0b0f1a]">
+
+            {/* CASE CLOSED — only show Close */}
+            {isClosed ? (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle size={16} weight="fill" className="text-emerald-400"/>
+                  <span className="text-[12px] text-emerald-400 font-semibold">
+                    Case closed — {data.closureStatus}
+                  </span>
+                </div>
+                <button onClick={onClose} className="px-4 py-2 rounded-lg bg-[#1e2030] border border-[var(--border)] text-[var(--text)] text-[12px] font-semibold hover:bg-white/5 transition-colors">
+                  Close
+                </button>
+              </div>
+
+            ) : isUnassigned ? (
+              /* UNASSIGNED — show Assign to Me + Assign to Analyst */
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <button onClick={()=>handleAssign("Admin")}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--primary)] hover:opacity-90 text-white text-[12px] font-semibold transition-opacity">
+                    <UserCircle size={13}/> Assign to Me
+                  </button>
+                  <button onClick={()=>setShowAssign(true)}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[var(--border)] text-[var(--text)] text-[12px] font-semibold hover:bg-white/5 transition-colors">
+                    <UserPlus size={13}/> Assign to Analyst
+                  </button>
+                </div>
+                <button onClick={onClose} className="px-3.5 py-2 rounded-lg bg-[#1e2030] border border-[var(--border)] text-[var(--text)] text-[12px] font-semibold hover:bg-white/5 transition-colors">
+                  Close
+                </button>
+              </div>
+
+            ) : (
+              /* NORMAL — full action buttons */
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Reassign Case — outline */}
+                  <button disabled={saving} onClick={()=>handleAction("Reassign")}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[var(--border)] text-[var(--text)] text-[12px] font-semibold hover:bg-white/5 transition-colors disabled:opacity-50">
+                    <UserCircle size={13}/>Reassign Case
+                  </button>
+                  {/* Escalate to Senior Team — amber */}
+                  <button disabled={saving} onClick={()=>handleAction("Escalate")}
+                    className="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-white text-[12px] font-semibold transition-colors disabled:opacity-50">
+                    Escalate to Senior Team
+                  </button>
+                  {/* Confirmed — red */}
+                  <button disabled={saving} onClick={()=>handleAction("Confirmed")}
+                    className="px-3.5 py-2 rounded-lg bg-red-500 hover:bg-red-400 text-white text-[12px] font-semibold transition-colors disabled:opacity-50">
+                    {saving&&<CircleNotch size={11} className="animate-spin inline mr-1"/>}Confirmed
+                  </button>
+                  {/* False Positive — dark neutral */}
+                  <button disabled={saving} onClick={()=>handleAction("FalsePositive")}
+                    className="px-3.5 py-2 rounded-lg bg-[#2a2a35] border border-[var(--border)] text-[var(--text)] text-[12px] font-semibold hover:bg-[#333] transition-colors disabled:opacity-50">
+                    False Positive
+                  </button>
+                  {/* No Action Needed — green */}
+                  <button disabled={saving} onClick={()=>handleAction("NoAction")}
+                    className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[12px] font-semibold transition-colors disabled:opacity-50">
+                    No Action Needed
+                  </button>
+                </div>
+                <button onClick={onClose} className="px-3.5 py-2 rounded-lg bg-[#1e2030] border border-[var(--border)] text-[var(--text)] text-[12px] font-semibold hover:bg-white/5 transition-colors">
+                  Close
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Investigator assign panel */}
+      {showAssign&&(
+        <AssignPanel
+          caseId={caseId}
+          currentUser="Admin"
+          onAssign={handleAssign}
+          onClose={()=>setShowAssign(false)}
+        />
+      )}
+
+      {/* In-modal toast (replaces browser alert) */}
+      {toast&&<Toast msg={toast} onClose={()=>setToast(null)}/>}
+    </>
+  );
+}
+
+// ─── Main Page ─────────────────────────────────────────────────────────────────
 export default function CaseManagement() {
+  const location   = useLocation();
   const [cases,    setCases]   = useState([]);
   const [loading,  setLoading] = useState(true);
   const [search,   setSearch]  = useState("");
-  const [statusF,  setStatusF] = useState("All");
-  const [closureF, setClosureF]= useState("All");
-  const [selected, setSelected]= useState(null); // case for modal
+  const [statusF,  setStatusF] = useState("All Status");
+  const [closureF, setClosureF]= useState("All Resolutions");
+  const [selected, setSelected]= useState(null);
+  const [checked,  setChecked] = useState(new Set());
 
   useEffect(()=>{
-    setTimeout(()=>{ setCases(buildCases()); setLoading(false); }, 400);
+    // Support navigation from dashboard with pre-set status filter
+    if(location.state?.statusFilter) setStatusF(location.state.statusFilter);
+    fetchCasesAPI().then(r=>{ if(r.success) setCases(r.data); setLoading(false); });
   },[]);
 
   const filtered = cases.filter(c=>{
-    const q = search.toLowerCase();
-    const ms = !q || c.id.toLowerCase().includes(q) || c.ruleName.toLowerCase().includes(q) || c.title.toLowerCase().includes(q);
-    const ss = statusF==="All"   || c.status===statusF;
-    const cs = closureF==="All"  || c.closure===closureF;
-    return ms && ss && cs;
+    const q=search.toLowerCase();
+    return (!q||c.id.toLowerCase().includes(q)||c.ruleName.toLowerCase().includes(q)||c.title.toLowerCase().includes(q))
+      &&(statusF==="All Status"||c.status===statusF)
+      &&(closureF==="All Resolutions"||c.closureStatus===closureF||(closureF==="Pending"&&!c.closureStatus));
   });
 
-  const stats = {
-    total: cases.length,
-    new:   cases.filter(c=>c.status==="New").length,
-    inv:   cases.filter(c=>c.status==="Investigating").length,
-    ai:    cases.filter(c=>c.status==="AI Assisted").length,
-    closed:cases.filter(c=>c.status==="Closed").length,
-  };
-
-  const handleUpdate = (id, updates) => {
-    setCases(prev=>prev.map(c=>c.id===id?{...c,...updates,updatedAt:new Date().toLocaleString()}:c));
-  };
+  const handleUpdate = useCallback((id,updates)=>setCases(prev=>prev.map(c=>c.id===id?{...c,...updates}:c)),[]);
+  const toggleCheck=id=>setChecked(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n;});
+  const allIds=filtered.map(c=>c.id);
+  const allChecked=allIds.length>0&&allIds.every(id=>checked.has(id));
+  const selCls="px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[12px] text-[var(--text)] focus:outline-none focus:border-[var(--primary)] cursor-pointer";
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--bg)]">
       <Sidebar/>
       <div className="flex-1 flex flex-col overflow-hidden">
         <Topbar/>
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+        <div className="flex-1 overflow-y-auto" style={{scrollbarWidth:"none"}}>
+          <style>{`.no-scroll::-webkit-scrollbar{display:none}`}</style>
+          <div className="no-scroll px-6 py-5 space-y-4">
 
-          {/* Title */}
-          <div>
-            <h1 className="text-xl font-semibold text-[var(--text)]">Case Management</h1>
-            <p className="text-sm text-[var(--muted)] mt-0.5">Anomaly investigation workflow and case tracking</p>
-          </div>
-
-          {/* Stats */}
-          <div className="grid grid-cols-5 gap-3">
-            {[
-              { label:"TOTAL CASES",  value:stats.total,  cls:"border-[var(--border)]"  },
-              { label:"NEW",          value:stats.new,    cls:"border-blue-500/20"       },
-              { label:"INVESTIGATING",value:stats.inv,    cls:"border-amber-500/20"      },
-              { label:"AI ASSISTED",  value:stats.ai,     cls:"border-purple-500/20"     },
-              { label:"CLOSED",       value:stats.closed, cls:"border-emerald-500/20"    },
-            ].map(s=>(
-              <div key={s.label} className={`p-4 rounded-xl border bg-[var(--card)] ${s.cls}`}>
-                <p className="text-[10px] font-semibold text-[var(--muted)] tracking-widest">{s.label}</p>
-                <p className="text-2xl font-bold mt-1.5 text-[var(--text)]">{s.value}</p>
+            <div className="flex items-start justify-between">
+              <div>
+                <h1 className="text-[17px] font-semibold text-[var(--text)]">Case Management - Anomaly Investigation Workflow</h1>
+                <p className="text-[12px] text-[var(--muted)] mt-0.5">Anomaly investigation case workflow</p>
               </div>
-            ))}
-          </div>
-
-          {/* Filters */}
-          <div className="flex gap-3">
-            <div className="relative flex-1">
-              <MagnifyingGlass className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--muted)]"/>
-              <input
-                value={search} onChange={e=>setSearch(e.target.value)}
-                placeholder="Search by Case ID, rule name, or title..."
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[var(--card)] border border-[var(--border)] text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--primary)]"
-              />
+              <span className="text-[12px] font-semibold text-[var(--text)] px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)]">{cases.length} Total Cases</span>
             </div>
-            <select value={statusF} onChange={e=>setStatusF(e.target.value)}
-              className="px-3 py-2.5 rounded-xl bg-[var(--card)] border border-[var(--border)] text-sm text-[var(--text)] focus:outline-none focus:border-[var(--primary)] min-w-[160px]">
-              <option>All</option>{STATUSES.map(s=><option key={s}>{s}</option>)}
-            </select>
-            <select value={closureF} onChange={e=>setClosureF(e.target.value)}
-              className="px-3 py-2.5 rounded-xl bg-[var(--card)] border border-[var(--border)] text-sm text-[var(--text)] focus:outline-none focus:border-[var(--primary)] min-w-[180px]">
-              <option>All</option>{CLOSURES.map(s=><option key={s}>{s}</option>)}
-            </select>
-          </div>
-          <p className="text-xs text-[var(--muted)]">Showing {filtered.length} of {cases.length} cases</p>
 
-          {/* Table */}
-          {loading ? (
-            <div className="border border-[var(--border)] rounded-xl p-10 flex items-center justify-center gap-3 text-[var(--muted)]">
-              <CircleNotch size={20} className="animate-spin text-blue-400"/>
-              <span className="text-sm">Loading cases...</span>
+            <div className="flex items-center gap-2.5">
+              <div className="relative flex-1">
+                <MagnifyingGlass className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--muted)]"/>
+                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by case ID, title, or rule name..."
+                  className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[13px] text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--primary)]"/>
+              </div>
+              <FunnelSimple size={16} className="text-[var(--muted)] flex-shrink-0"/>
+              <select value={statusF} onChange={e=>setStatusF(e.target.value)} className={selCls}>
+                <option>All Status</option>
+                {["New","Investigating","AI Assisted","Escalated","Closed"].map(s=><option key={s}>{s}</option>)}
+              </select>
+              <FunnelSimple size={16} className="text-[var(--muted)] flex-shrink-0"/>
+              <select value={closureF} onChange={e=>setClosureF(e.target.value)} className={selCls}>
+                <option>All Resolutions</option>
+                {["Confirmed","False Positive","No Action","Pending"].map(s=><option key={s}>{s}</option>)}
+              </select>
+              <span className="text-[12px] font-semibold text-[var(--text)] px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--card)] whitespace-nowrap">{filtered.length} results</span>
             </div>
-          ) : (
-            <div className="border border-[var(--border)] rounded-xl overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[1100px]">
-                  <thead className="bg-[#0f1117] border-b border-[var(--border)]">
-                    <tr>
-                      {["CASE ID","RISK","TITLE","ENVIRONMENT","RULE","STATUS","RESOLUTION","ASSIGNEE","ACTIONS"].map(h=>(
-                        <th key={h} className="p-3.5 text-left text-[10px] font-semibold text-[var(--muted)] tracking-widest uppercase whitespace-nowrap">{h}</th>
+
+            {loading ? (
+              <div className="rounded-xl border border-[var(--border)] p-12 flex items-center justify-center gap-3 bg-[var(--card)]">
+                <CircleNotch size={20} className="animate-spin text-blue-400"/>
+                <span className="text-sm text-[var(--muted)]">Loading cases...</span>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--border)] bg-[var(--bg)]">
+                      <th className="px-4 py-3 w-10">
+                        <input type="checkbox" checked={allChecked}
+                          onChange={e=>setChecked(e.target.checked?new Set(allIds):new Set())}
+                          className="w-4 h-4 rounded border-gray-600 cursor-pointer accent-[var(--primary)]"/>
+                      </th>
+                      {["CASE ID","RISK","TITLE","RULE","STATUS","CLOSURE STATUS","ASSIGNEE"].map(h=>(
+                        <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-[var(--muted)] tracking-widest uppercase whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border)]">
-                    {filtered.length===0 && (
-                      <tr><td colSpan={9} className="p-10 text-center text-[var(--muted)] text-sm">No cases match your filters.</td></tr>
-                    )}
-                    {filtered.map(c=>{
-                      const sc = STATUS_CLS[c.status]  || STATUS_CLS["New"];
-                      const cc = CLOSURE_CLS[c.closure] || CLOSURE_CLS["Pending"];
-                      return (
-                        <tr key={c.id} className="hover:bg-white/[0.02] transition-colors cursor-pointer" onClick={()=>setSelected(c)}>
-                          <td className="p-3.5"><span className="text-xs font-mono font-semibold text-blue-400">{c.id}</span></td>
-                          <td className="p-3.5"><RiskScore score={c.riskScore}/></td>
-                          <td className="p-3.5 max-w-[280px]"><p className="text-sm text-[var(--text)] truncate">{c.title}</p></td>
-                          <td className="p-3.5"><Chip label={c.environment} className={ENV_CLS[c.environment]}/></td>
-                          <td className="p-3.5">
-                            <p className="text-xs font-mono text-blue-400">{c.ruleId}</p>
-                            <p className="text-[10px] text-[var(--muted)] truncate max-w-[140px]">{c.ruleName}</p>
-                          </td>
-                          <td className="p-3.5"><Chip label={c.status} className={`${sc.bg} ${sc.text}`}/></td>
-                          <td className="p-3.5"><Chip label={c.closure} className={`${cc.bg} ${cc.text}`}/></td>
-                          <td className="p-3.5">
-                            <div className="flex items-center gap-1.5 text-xs text-[var(--muted)]">
-                              <UserCircle size={14}/>{c.assignee}
-                            </div>
-                          </td>
-                          <td className="p-3.5">
-                            <div className="flex items-center gap-1" onClick={e=>e.stopPropagation()}>
-                              <button onClick={()=>setSelected(c)} className="p-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--text)] hover:bg-white/5" title="View"><Eye size={15}/></button>
-                              <button onClick={()=>setSelected(c)} className="p-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--text)] hover:bg-white/5" title="Edit"><PencilSimple size={15}/></button>
-                              {c.status==="New" && <button className="p-1.5 rounded-lg text-purple-400 hover:bg-purple-500/10" title="AI Assist"><Robot size={15}/></button>}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {filtered.length===0&&<tr><td colSpan={8} className="px-4 py-12 text-center text-[var(--muted)] text-sm">No cases match your filters.</td></tr>}
+                    {filtered.map(c=>(
+                      <tr key={c.id} onClick={()=>setSelected(c.id)}
+                        className={`cursor-pointer transition-colors ${checked.has(c.id)?"bg-[var(--primary)]/5":"hover:bg-white/[0.025]"}`}>
+                        <td className="px-4 py-3.5" onClick={e=>{e.stopPropagation();toggleCheck(c.id);}}>
+                          <input type="checkbox" checked={checked.has(c.id)} onChange={()=>toggleCheck(c.id)} className="w-4 h-4 rounded border-gray-600 cursor-pointer accent-[var(--primary)]"/>
+                        </td>
+                        <td className="px-4 py-3.5"><span className="text-[12px] font-mono font-medium text-[var(--text)]">{c.id}</span></td>
+                        <td className="px-4 py-3.5"><span className={`text-[14px] font-bold ${RISK_COLOR(c.riskScore)}`}>{c.riskScore}</span></td>
+                        <td className="px-4 py-3.5 max-w-[200px]">
+                          <p className="text-[13px] font-medium text-[var(--text)] truncate">{c.title}</p>
+                          <p className={`text-[10px] font-semibold ${ENV_CLS[c.environment]||"text-[var(--muted)]"}`}>Env: {c.environment}</p>
+                        </td>
+                        <td className="px-4 py-3.5 max-w-[180px]">
+                          <p className="text-[12px] text-blue-400 font-medium truncate hover:underline">{c.ruleName}</p>
+                          <p className="text-[10px] font-mono text-[var(--muted)]">{c.ruleId}</p>
+                        </td>
+                        <td className="px-4 py-3.5"><StatusBadge status={c.status}/></td>
+                        <td className="px-4 py-3.5">{c.closureStatus?<span className="text-[12px] text-[var(--text)]">{c.closureStatus}</span>:<span className="text-[12px] text-[var(--muted)]">—</span>}</td>
+                        <td className="px-4 py-3.5"><AssigneeChip name={c.assignee}/></td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
-      {selected && <CaseDetailModal case={selected} onClose={()=>setSelected(null)} onUpdate={handleUpdate}/>}
+      {selected&&<CaseModal caseId={selected} onClose={()=>setSelected(null)} onUpdate={handleUpdate}/>}
     </div>
   );
 }

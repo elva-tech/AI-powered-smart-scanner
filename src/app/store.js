@@ -3,6 +3,7 @@ import authReducer from "../features/auth/authSlice";
 import dashboardReducer from "../features/dashboard/dashboardSlice";
 import rulesReducer from "../features/rules/rulesSlice";
 import securityReducer from "../features/security/securitySlice";
+import AIRuleArchitect from "../pages/AIRuleArchitect";
 
 export const store = configureStore({
   reducer: {
@@ -10,6 +11,7 @@ export const store = configureStore({
     dashboard: dashboardReducer,
     rules: rulesReducer,
     security: securityReducer,
+    // AIRuleArchitect:AIRuleArchitect,
   },
 });
 

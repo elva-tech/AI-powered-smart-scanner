@@ -154,9 +154,13 @@ function ActiveSessionsTable() {
                   <td className="px-5 py-3.5 text-sm font-mono text-[var(--muted)]">{sess.ip}</td>
                   <td className="px-5 py-3.5 text-sm text-[var(--muted)]">{sess.loginTime}</td>
                   <td className="px-5 py-3.5">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded text-[11px] font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                      {sess.status}
-                    </span>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded text-[11px] font-medium ${
+  sess.status === "Active"
+    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+    : "bg-red-500/20 text-red-400 border border-red-500/30"
+}`}>
+  {sess.status}
+</span>
                   </td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-2">
@@ -164,14 +168,21 @@ function ActiveSessionsTable() {
                       <button
                         className="text-[var(--muted)] hover:text-amber-400 hover:bg-white/5 p-1.5 rounded-lg transition-colors"
                         title="Lock session"
-                        onClick={() => dispatch(toggleUserLock({ id: sess.id, currentStatus: "Active" }))}
+                        onClick={(e) => {
+  e.stopPropagation();
+  dispatch(toggleUserLock({ id: sess.id }));
+}}
                       >
                         <LockSimple size={16} />
                       </button>
-                      <button
-                        className="text-[var(--muted)] hover:text-red-400 hover:bg-red-500/10 p-1.5 rounded-lg transition-colors"
-                        title="Terminate session"
-                      >
+                     <button
+  className="text-[var(--muted)] hover:text-red-400 hover:bg-red-500/10 p-1.5 rounded-lg transition-colors"
+  title="Terminate session"
+  onClick={(e) => {
+    e.stopPropagation();
+    dispatch(deleteUser(sess.id));
+  }}
+>
                         <Trash size={16} />
                       </button>
                     </div>
@@ -670,13 +681,14 @@ function UserManagementTable() {
 export default function Security() {
   const dispatch  = useDispatch();
   const modalType = useSelector((s) => s.security.modalType);
+const { sessions } = useSelector(s => s.security);
 
   useEffect(() => {
-    dispatch(fetchSecurityStats());
-    dispatch(fetchActiveSessions());
-    dispatch(fetchFailedLogins());
-    dispatch(fetchUsers());
-  }, [dispatch]);
+  dispatch(fetchSecurityStats());
+  dispatch(fetchActiveSessions());
+  dispatch(fetchFailedLogins());
+  dispatch(fetchUsers());
+}, [dispatch]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--bg)]">

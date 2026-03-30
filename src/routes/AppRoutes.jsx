@@ -5,6 +5,7 @@ import RuleLibrary from "../pages/RuleLibrary";
 import { useAppSelector } from "../app/hooks";
 import CaseManagement from "../pages/caseManagement";
 import Security from "../pages/Security";
+import AIRuleArchitect from "../pages/AIRuleArchitect";
 
 const ProtectedRoute = ({ children }) => {
   const user = useAppSelector((state) => state.auth.user);
@@ -50,6 +51,16 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute>
               <Security />
+            </ProtectedRoute>
+          }
+        />
+
+
+            <Route
+          path="/architect"
+          element={
+            <ProtectedRoute>
+              <AIRuleArchitect />
             </ProtectedRoute>
           }
         />
