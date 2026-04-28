@@ -42,6 +42,8 @@ import {
   UploadSimple,
 } from "@phosphor-icons/react";
 import { Server } from "lucide-react";
+// ✅ NEW: Import backend services if not passed as props
+import { ruleService } from "../../services/ruleService";
 
 // ─── Visual Config (all hardcoded — no dynamic Tailwind interpolation) ────────
 
@@ -136,6 +138,19 @@ function LifecycleProgress({ status }) {
         );
       })}
     </div>
+  );
+}
+
+/** Anomalies link — opens modal showing anomalies */
+function AnomaliesLink({ ruleId, ruleName, count, simId }) {
+  const dispatch = useAppDispatch();
+  return (
+    <button
+      onClick={() => dispatch(openModal({ type: "ANOMALIES", ruleId, ruleName, simId, count }))}
+      className="text-red-400 font-semibold hover:text-red-300 hover:underline transition-colors cursor-pointer"
+    >
+      {count.toLocaleString()} cases
+    </button>
   );
 }
 
@@ -640,7 +655,12 @@ function ViewRuleModal() {
                   <div className="flex items-center gap-1">
                     <span className="text-[var(--muted)]">Anomalies Detected: </span>
                     <Siren size={11} className="text-red-400" />
-                    <span className="text-red-400 font-semibold">{sim.anomaliesDetected.toLocaleString()} cases</span>
+                    <AnomaliesLink 
+                      ruleId={rule.id} 
+                      ruleName={rule.name}
+                      count={sim.anomaliesDetected}
+                      simId={sim.simId}
+                    />
                   </div>
                   <div><span className="text-[var(--muted)]">Thresholds: </span><span className="text-[var(--text)]">{sim.thresholds}</span></div>
                 </div>
@@ -826,6 +846,214 @@ function DeploySuccessModal() {
         </div>
         <button onClick={() => dispatch(closeModal())} className="w-full py-2.5 rounded-xl bg-gradient-to-b from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white text-sm font-semibold transition-all">
           Done
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ─── Anomalies Modal ──────────────────────────────────────────────────────────
+function AnomaliesModal() {
+  const dispatch = useAppDispatch();
+  const { modalData } = useAppSelector((s) => s.rules);
+  const [anomalies, setAnomalies] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
+
+  if (!modalData) return null;
+
+  const { ruleId, ruleName, simId, count } = modalData;
+
+  // Fetch anomalies from backend when modal opens
+  React.useEffect(() => {
+    const fetchAnomalies = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Call backend endpoint to fetch from SAP OData
+        const params = new URLSearchParams();
+        if (ruleId && String(ruleId).trim()) params.append('rule_id', String(ruleId).trim());
+        if (simId && String(simId).trim()) params.append('sim_id', String(simId).trim());
+        params.append('limit', '100');  // Always string to avoid encoding issues
+        
+        const url = `/sap/anomalies/detected/?${params.toString()}`;
+        console.log('Fetching anomalies from:', url);
+        
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch anomalies: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+          setAnomalies(data.anomalies || []);
+        } else {
+          setError(data.message || 'Failed to fetch anomalies');
+        }
+      } catch (err) {
+        setError(err.message);
+        console.error('Error fetching anomalies:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchAnomalies();
+  }, [ruleId, simId]);
+
+  const getRiskColor = (score) => {
+    if (score >= 90) return "bg-red-500";
+    if (score >= 75) return "bg-orange-500";
+    if (score >= 50) return "bg-yellow-500";
+    return "bg-green-500";
+  };
+
+  const getRiskBgColor = (score) => {
+    if (score >= 90) return "bg-red-500/10";
+    if (score >= 75) return "bg-orange-500/10";
+    if (score >= 50) return "bg-yellow-500/10";
+    return "bg-green-500/10";
+  };
+
+  const getRiskTextColor = (score) => {
+    if (score >= 90) return "text-red-400";
+    if (score >= 75) return "text-orange-400";
+    if (score >= 50) return "text-yellow-400";
+    return "text-green-400";
+  };
+
+  const getModuleBadgeStyle = (module) => {
+    const styles = {
+      FI: "bg-indigo-600/25 text-indigo-300 border border-indigo-500/30",
+      MM: "bg-violet-600/25 text-violet-300 border border-violet-500/30",
+      SD: "bg-cyan-600/25 text-cyan-300 border border-cyan-500/30",
+      HR: "bg-rose-600/25 text-rose-300 border border-rose-500/30",
+      CO: "bg-amber-600/25 text-amber-300 border border-amber-500/30",
+      PP: "bg-emerald-600/25 text-emerald-300 border border-emerald-500/30",
+      QM: "bg-yellow-600/25 text-yellow-300 border border-yellow-500/30",
+      PM: "bg-slate-600/40 text-slate-300 border border-slate-500/30",
+    };
+    return styles[module] || "bg-slate-600/40 text-slate-300 border border-slate-500/30";
+  };
+
+  return (
+    <Modal onClose={() => dispatch(closeModal())} width="max-w-5xl">
+      <div className="px-6 pt-5 pb-4 border-b border-white/10 flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold text-[var(--text)]">Detected Fraud Cases</h2>
+            <span className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30">
+              Vendor Manipulation
+            </span>
+          </div>
+          <p className="text-xs text-[var(--muted)] mt-2">{count} cases detected in simulation</p>
+        </div>
+        <button onClick={() => dispatch(closeModal())} className="p-1.5 rounded-lg text-[var(--muted)] hover:bg-white/5 transition-colors">
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="px-6 py-4 overflow-x-auto max-h-[65vh] overflow-y-auto">
+        {loading && (
+          <div className="flex items-center justify-center gap-3 py-12">
+            <CircleNotch size={20} className="animate-spin text-blue-400" />
+            <span className="text-sm text-[var(--muted)]">Fetching anomalies from SAP...</span>
+          </div>
+        )}
+        
+        {error && (
+          <div className="flex items-start gap-3 p-4 rounded-lg bg-red-500/10 border border-red-500/20 mb-4">
+            <Warning size={14} className="text-red-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-red-400">Error Loading Anomalies</p>
+              <p className="text-xs text-red-400/75 mt-1">{error}</p>
+            </div>
+          </div>
+        )}
+        
+        {!loading && anomalies.length === 0 && !error && (
+          <div className="text-center py-12">
+            <p className="text-[var(--muted)] text-sm">No anomalies detected for this rule and simulation.</p>
+          </div>
+        )}
+        
+        {!loading && anomalies.length > 0 && (
+          <table className="w-full text-sm min-w-[1200px]">
+            <thead className="sticky top-0 bg-[var(--bg)]">
+              <tr className="border-b border-white/10">
+                <th className="px-3 py-3 text-left text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest w-8"></th>
+                <th className="px-3 py-3 text-left text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest">Case ID</th>
+                <th className="px-3 py-3 text-left text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest">Transaction</th>
+                <th className="px-3 py-3 text-left text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest">Document</th>
+                <th className="px-3 py-3 text-left text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest">Vendor</th>
+                <th className="px-3 py-3 text-left text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest">Amount</th>
+              <th className="px-3 py-3 text-left text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest">Risk Score</th>
+              <th className="px-3 py-3 text-left text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest">SAP Module</th>
+              <th className="px-3 py-3 text-left text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest">Detected At</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/8">
+            {anomalies.map((anom) => (
+              <tr key={anom.id} className="hover:bg-white/[0.025] transition-colors group">
+                <td className="px-3 py-3.5 text-[var(--muted)] group-hover:text-blue-400 cursor-pointer">
+                  <CaretRight size={14} />
+                </td>
+                <td className="px-3 py-3.5">
+                  <span className="text-blue-400 font-mono text-[12px] font-semibold hover:underline cursor-pointer">{anom.caseId}</span>
+                </td>
+                <td className="px-3 py-3.5">
+                  <span className="text-blue-400 font-mono text-[12px] font-semibold hover:underline cursor-pointer">{anom.transactionId}</span>
+                </td>
+                <td className="px-3 py-3.5 text-[12px] text-[var(--muted)] font-mono">{anom.document}</td>
+                <td className="px-3 py-3.5">
+                  <div className="text-[12px]">
+                    <p className="font-semibold text-[var(--text)]">{anom.vendor}</p>
+                    <p className="text-[10px] text-[var(--muted)]">{anom.vendorCode}</p>
+                  </div>
+                </td>
+                <td className="px-3 py-3.5">
+                  <div className="text-[12px] font-semibold text-[var(--text)]">
+                    {anom.amount.currency} {anom.amount.value.toLocaleString()}
+                  </div>
+                </td>
+                <td className="px-3 py-3.5">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-12 h-4 rounded ${getRiskBgColor(anom.riskScore)} border ${getRiskColor(anom.riskScore)} border-opacity-30 flex items-center px-1`}>
+                      <div className={`h-full w-full rounded-sm ${getRiskColor(anom.riskScore)} opacity-70`} style={{ width: `${anom.riskScore}%` }}></div>
+                    </div>
+                    <span className={`text-[12px] font-bold ${getRiskTextColor(anom.riskScore)}`}>{anom.riskScore}</span>
+                  </div>
+                </td>
+                <td className="px-3 py-3.5">
+                  <span className={`text-[11px] font-bold px-2 py-1 rounded ${getModuleBadgeStyle(anom.sapModule)}`}>
+                    {anom.sapModule}
+                  </span>
+                </td>
+                <td className="px-3 py-3.5 text-[12px] text-[var(--muted)] whitespace-nowrap">{anom.detectedAt}</td>
+              </tr>
+            ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="px-6 py-3 border-t border-white/10 flex items-center justify-between">
+        <p className="text-xs text-[var(--muted)]">Showing {anomalies.length} detected fraud cases</p>
+        <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+          <div className="w-3 h-3 rounded-full bg-slate-400 animate-pulse"></div>
+          Live preview loading, interactions may not be saved
+        </div>
+      </div>
+
+      <div className="px-6 pb-5 flex justify-end gap-2">
+        <button
+          onClick={() => dispatch(closeModal())}
+          className="px-6 py-2.5 rounded-lg bg-slate-700/40 hover:bg-slate-700/60 text-[var(--text)] text-sm font-semibold transition-colors"
+        >
+          Close
         </button>
       </div>
     </Modal>
@@ -1297,7 +1525,7 @@ function GateModal() {
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
-export default function RuleLibraryFull() {
+export default function RuleLibraryFull({ onProcessRule, isProcessingRule = false, sapStatus }) {
   const dispatch      = useAppDispatch();
   const loading       = useAppSelector((s) => s.rules.loading);
   const error         = useAppSelector((s) => s.rules.error);
@@ -1323,6 +1551,13 @@ export default function RuleLibraryFull() {
 
   return (
     <div className="p-6 space-y-5 min-h-full">
+      {/* ✅ NEW: SAP Status indicator */}
+      {sapStatus && sapStatus.status === 'connected' && (
+        <div className="p-3 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[12px]">
+          ✓ SAP Connected - Rules ready for deployment
+        </div>
+      )}
+
       <p className="text-sm text-[var(--muted)]">Enterprise anomaly detection rule governance and lifecycle management</p>
 
       <StatsCards />
@@ -1342,6 +1577,7 @@ export default function RuleLibraryFull() {
       {modalType === "VIEW"                                                              && <ViewRuleModal />}
       {modalType === "DEPLOY_TO_ENV"                                                     && <DeployToEnvModal />}
       {modalType === "DEPLOY_SUCCESS"                                                    && <DeploySuccessModal />}
+      {modalType === "ANOMALIES"                                                         && <AnomaliesModal />}
       {simStep > 0                                                                       && <SimulationModal />}
       {["CONFIRM_DEPLOY","CONFIRM_ACTIVATE","CONFIRM_DEACTIVATE"].includes(modalType)    && <ConfirmModal />}
       {modalType === "SCHEDULE"                                                          && <ScheduleModal />}

@@ -27,6 +27,9 @@ import {
   Books, FolderSimple, ShieldCheck, ChartLine, CheckCircle,
   XCircle, Info, ActivityIcon, CircleNotch,
 } from "@phosphor-icons/react";
+// ✅ NEW: Import backend services
+import { dashboardService } from "../services/dashboardService";
+import { sapService } from "../services/sapService";
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
@@ -106,6 +109,11 @@ export default function Dashboard() {
   const [cases,   setCases]   = useState([]);
   const [stats,   setStats]   = useState(null);
   const [loading, setLoading] = useState(true);
+  
+  // ✅ NEW: Backend connection state
+  const [sapConnectionStatus, setSapConnectionStatus] = useState(null);
+  const [realtimeData, setRealtimeData] = useState(null);
+  const [apiError, setApiError] = useState(null);
 
   // Only filter by active rule IDs if rules are loaded AND some are active/deployed.
   // Pass null otherwise so detectionsAPI uses full dataset (not empty array = 0).
@@ -121,7 +129,49 @@ export default function Dashboard() {
     dispatch(fetchSecurityStats());
     dispatch(fetchActiveSessions());
     fetchCasesAPI().then(r => { if (r.success) setCases(r.data); });
+    
+    // ✅ NEW: Call backend APIs
+    setupBackendIntegration();
   }, [dispatch]);
+
+  // ✅ NEW: Setup backend integration
+  const setupBackendIntegration = async () => {
+    try {
+      // Test SAP connection
+      const connectionResult = await sapService.testConnection();
+      setSapConnectionStatus(connectionResult);
+      
+      // Get real-time dashboard data
+      const dashboardResult = await dashboardService.getDashboardData();
+      if (dashboardResult.status === 'success') {
+        setRealtimeData(dashboardResult.data);
+      } else {
+        setApiError(dashboardResult.message || 'Failed to fetch dashboard data');
+      }
+    } catch (error) {
+      console.error('Backend API error:', error);
+      setApiError(error.message);
+    }
+  };
+
+  // ✅ NEW: Subscribe to real-time updates (SSE streaming)
+  useEffect(() => {
+    const unsubscribe = dashboardService.streamRealtimeUpdates(
+      (newData) => {
+        setRealtimeData(newData);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Real-time streaming error:', error);
+        setApiError(error.message);
+      }
+    );
+
+    return () => {
+      // Cleanup subscription
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
 
   // Re-fetch detection stats when active rules change
   useEffect(() => {
@@ -176,6 +226,19 @@ export default function Dashboard() {
         <Topbar/>
         <div className="flex-1 overflow-y-auto" style={{scrollbarWidth:"none"}}>
           <div className="px-6 py-5 space-y-5 pb-8">
+
+            {/* ✅ NEW: SAP Connection Status & Error Display */}
+            {apiError && (
+              <div className="p-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-300 text-[12px]">
+                ⚠️ API Error: {apiError}
+              </div>
+            )}
+            
+            {sapConnectionStatus && sapConnectionStatus.status === 'connected' && (
+              <div className="p-3 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[12px]">
+                ✓ SAP Connected • Badge: {sapConnectionStatus.badge} • Notifications: {sapConnectionStatus.notifications}
+              </div>
+            )}
 
             <div>
               <h1 className="text-[18px] font-semibold text-[var(--text)]">Executive Dashboard</h1>
