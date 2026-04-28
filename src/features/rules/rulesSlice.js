@@ -67,7 +67,7 @@ const rulesSlice = createSlice({
     simEnvs: [], deployEnvs: [],
     search: "", statusFilter: "ALL", moduleFilter: "ALL",
     selected: [],
-    modalType: null, activeRule: null,
+    modalType: null, activeRule: null, modalData: null,
     bulkLoading: false, bulkError: null,
     deployTarget: null, deployLoading: false, deployError: null,
     deploySuccessMsg: "",
@@ -105,16 +105,29 @@ const rulesSlice = createSlice({
     clearSelection: (s) => { s.selected = []; },
 
     // ── Modals ────────────────────────────────────────────────────────────────
-    openModal:  (s, a) => { s.modalType = a.payload.type; s.activeRule = a.payload.rule || null; s.bulkError = null; s.deployError = null; },
-    closeModal: (s)    => { s.modalType = null; s.activeRule = null; s.bulkError = null; s.deployError = null; s.deploySuccessMsg = ""; },
+    openModal:  (s, a) => {
+      s.modalType = a.payload.type;
+      s.activeRule = a.payload.rule || null;
+      s.modalData = a.payload || null;
+      s.bulkError = null;
+      s.deployError = null;
+    },
+    closeModal: (s)    => {
+      s.modalType = null;
+      s.activeRule = null;
+      s.modalData = null;
+      s.bulkError = null;
+      s.deployError = null;
+      s.deploySuccessMsg = "";
+    },
 
     // ── Simulation Control ────────────────────────────────────────────────────
-    openSimulation: (s, a) => { s.simulation = { ...initSim, step: 1 }; s.activeRule = a.payload; s.modalType = null; },
+    openSimulation: (s, a) => { s.simulation = { ...initSim, step: 1 }; s.activeRule = a.payload; s.modalType = null; s.modalData = null; },
     setSimStep:     (s, a) => { s.simulation.step = a.payload; },
     setSimMode:     (s, a) => { s.simulation.mode = a.payload; },
     setSimEnv:      (s, a) => { s.simulation.selectedEnv = a.payload; },
     setSimConfig:   (s, a) => { s.simulation.config = { ...s.simulation.config, ...a.payload }; },
-    closeSimulation:(s)    => { s.simulation = { ...initSim }; s.activeRule = null; },
+    closeSimulation:(s)    => { s.simulation = { ...initSim }; s.activeRule = null; s.modalData = null; },
 
     // ── Deploy-to-env ─────────────────────────────────────────────────────────
     setDeployTarget: (s, a) => { s.deployTarget = a.payload; s.deployError = null; },

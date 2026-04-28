@@ -229,29 +229,35 @@ export const runSimulationAPI = async (ruleId, config) => {
   await delay(1500);
   const tx = config.transactionCount || (40000 + Math.floor(Math.random() * 30000));
   const fpr = parseFloat((1.2 + Math.random() * 1.8).toFixed(2));
-  RULES_CACHE = buildRules();
- RULES_CACHE = buildRules().map(r =>
-  r.id === ruleId
-    ? { ...r, status: "SIMULATION", lifecycle: "SIMULATION" }
-    : r
-);
+  const simulationResult = {
+    simId: `SIM-${Date.now()}`,
+    ruleId,
+    environment: config.environment || "QA",
+    mode: config.mode || "live",
+    runAt: new Date().toLocaleString(),
+    dateRange: { from: config.fromDate || "", to: config.toDate || "" },
+    transactionsScanned: tx,
+    falsePositiveRate: fpr,
+    performance: "< 90ms",
+    anomaliesDetected: Math.floor(tx * 0.003),
+    thresholds: "Default",
+  };
 
-localStorage.setItem("rules", JSON.stringify(RULES_CACHE));
+  RULES_CACHE = buildRules().map((r) =>
+    r.id === ruleId
+      ? {
+          ...r,
+          status: "SIMULATION",
+          lifecycle: "SIMULATION",
+          simulationHistory: [simulationResult, ...(r.simulationHistory || [])],
+        }
+      : r
+  );
+
+  localStorage.setItem("rules", JSON.stringify(RULES_CACHE));
   return {
     success: true,
-    data: {
-      simId: `SIM-${Date.now()}`,
-      ruleId,
-      environment: config.environment || "QA",
-      mode: config.mode || "live",
-      runAt: new Date().toLocaleString(),
-      dateRange: { from: config.fromDate || "", to: config.toDate || "" },
-      transactionsScanned: tx,
-      falsePositiveRate: fpr,
-      performance: "< 90ms",
-      anomaliesDetected: Math.floor(tx * 0.003),
-      thresholds: "Default",
-    },
+    data: simulationResult,
   };
 };
 

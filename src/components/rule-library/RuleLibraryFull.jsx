@@ -19,7 +19,7 @@
  *  + "Showing X of Y" updates in real-time with filters
  */
 
-import { useEffect } from "react";
+import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "../../app/hooks";
 import {
@@ -44,6 +44,7 @@ import {
 import { Server } from "lucide-react";
 // ✅ NEW: Import backend services if not passed as props
 import { ruleService } from "../../services/ruleService";
+import apiClient from "../../services/apiClient";
 
 // ─── Visual Config (all hardcoded — no dynamic Tailwind interpolation) ────────
 
@@ -862,47 +863,77 @@ function AnomaliesModal() {
 
   if (!modalData) return null;
 
-  const { ruleId, ruleName, simId, count } = modalData;
+  const { ruleId, simId, count } = modalData;
+
+  const normalizeAnomaly = React.useCallback((raw, index) => {
+    const amountRaw = raw.amount?.value ?? raw.amount_value ?? raw.amount ?? raw.total_amount ?? 0;
+    const amountValue = Number(amountRaw) || 0;
+    const currency = raw.amount?.currency || raw.currency || raw.currency_code || "USD";
+    const riskScore = Number(raw.riskScore ?? raw.risk_score ?? raw.score ?? 0);
+
+    return {
+      id: raw.id || raw.caseId || raw.case_id || `${raw.transactionId || raw.transaction_id || "ANOM"}-${index}`,
+      caseId: raw.caseId || raw.case_id || raw.case || "N/A",
+      transactionId: raw.transactionId || raw.transaction_id || raw.txn_id || "N/A",
+      document: raw.document || raw.document_no || raw.documentNumber || "N/A",
+      vendor: raw.vendor || raw.vendor_name || "Unknown Vendor",
+      vendorCode: raw.vendorCode || raw.vendor_code || raw.vendor_id || "—",
+      amount: {
+        currency,
+        value: amountValue,
+      },
+      riskScore,
+      sapModule: raw.sapModule || raw.sap_module || raw.module || "FI",
+      detectedAt: raw.detectedAt || raw.detected_at || raw.created_at || raw.timestamp || new Date().toISOString(),
+    };
+  }, []);
 
   // Fetch anomalies from backend when modal opens
   React.useEffect(() => {
+    let mounted = true;
+
     const fetchAnomalies = async () => {
       try {
         setLoading(true);
         setError(null);
         
-        // Call backend endpoint to fetch from SAP OData
         const params = new URLSearchParams();
-        if (ruleId && String(ruleId).trim()) params.append('rule_id', String(ruleId).trim());
-        if (simId && String(simId).trim()) params.append('sim_id', String(simId).trim());
-        params.append('limit', '100');  // Always string to avoid encoding issues
+        if (ruleId && String(ruleId).trim()) params.append("rule_id", String(ruleId).trim());
+        if (simId && String(simId).trim()) params.append("sim_id", String(simId).trim());
+        params.append("limit", "100");
         
         const url = `/sap/anomalies/detected/?${params.toString()}`;
-        console.log('Fetching anomalies from:', url);
+        const response = await apiClient.get(url);
+        const data = response?.data || {};
+        const sourceList = Array.isArray(data.anomalies)
+          ? data.anomalies
+          : Array.isArray(data.data)
+            ? data.data
+            : Array.isArray(data.results)
+              ? data.results
+              : [];
         
-        const response = await fetch(url);
-        
-        if (!response.ok) {
-          throw new Error(`Failed to fetch anomalies: ${response.statusText}`);
+        if (data.status && data.status !== "success" && sourceList.length === 0) {
+          throw new Error(data.message || "Failed to fetch anomalies");
         }
-        
-        const data = await response.json();
-        
-        if (data.status === 'success') {
-          setAnomalies(data.anomalies || []);
-        } else {
-          setError(data.message || 'Failed to fetch anomalies');
+
+        if (mounted) {
+          setAnomalies(sourceList.map(normalizeAnomaly));
         }
       } catch (err) {
-        setError(err.message);
-        console.error('Error fetching anomalies:', err);
+        if (mounted) {
+          setError(err?.response?.data?.message || err.message || "Failed to fetch anomalies");
+        }
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
     
     fetchAnomalies();
-  }, [ruleId, simId]);
+    return () => {
+      mounted = false;
+    };
+  }, [ruleId, simId, normalizeAnomaly]);
 
   const getRiskColor = (score) => {
     if (score >= 90) return "bg-red-500";
@@ -939,9 +970,18 @@ function AnomaliesModal() {
     return styles[module] || "bg-slate-600/40 text-slate-300 border border-slate-500/30";
   };
 
+  const formatDetectedAt = (value) => {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "N/A";
+    return d.toLocaleString();
+  };
+
+  const rows = anomalies;
+  const visibleRows = rows.slice(0, 10);
+
   return (
-    <Modal onClose={() => dispatch(closeModal())} width="max-w-5xl">
-      <div className="px-6 pt-5 pb-4 border-b border-white/10 flex items-start justify-between">
+    <Modal onClose={() => dispatch(closeModal())} width="max-w-6xl">
+      <div className="px-8 pt-6 pb-4 border-b border-white/10 flex items-start justify-between">
         <div>
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-semibold text-[var(--text)]">Detected Fraud Cases</h2>
@@ -949,40 +989,37 @@ function AnomaliesModal() {
               Vendor Manipulation
             </span>
           </div>
-          <p className="text-xs text-[var(--muted)] mt-2">{count} cases detected in simulation</p>
+          <p className="text-xs text-[var(--muted)] mt-2">{rows.length || Number(count) || 0} cases detected in simulation</p>
         </div>
         <button onClick={() => dispatch(closeModal())} className="p-1.5 rounded-lg text-[var(--muted)] hover:bg-white/5 transition-colors">
           <X size={18} />
         </button>
       </div>
 
-      <div className="px-6 py-4 overflow-x-auto max-h-[65vh] overflow-y-auto">
+      <div className="px-8 py-4 overflow-x-auto">
         {loading && (
           <div className="flex items-center justify-center gap-3 py-12">
             <CircleNotch size={20} className="animate-spin text-blue-400" />
             <span className="text-sm text-[var(--muted)]">Fetching anomalies from SAP...</span>
           </div>
         )}
-        
-        {error && (
-          <div className="flex items-start gap-3 p-4 rounded-lg bg-red-500/10 border border-red-500/20 mb-4">
-            <Warning size={14} className="text-red-400 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-semibold text-red-400">Error Loading Anomalies</p>
-              <p className="text-xs text-red-400/75 mt-1">{error}</p>
-            </div>
-          </div>
-        )}
-        
-        {!loading && anomalies.length === 0 && !error && (
+
+        {!loading && rows.length === 0 && !error && (
           <div className="text-center py-12">
             <p className="text-[var(--muted)] text-sm">No anomalies detected for this rule and simulation.</p>
           </div>
         )}
+
+        {!loading && rows.length === 0 && error && (
+          <div className="text-center py-12">
+            <p className="text-sm font-semibold text-red-400">Error Loading Anomalies</p>
+            <p className="text-xs text-red-400/75 mt-1">{error}</p>
+          </div>
+        )}
         
-        {!loading && anomalies.length > 0 && (
-          <table className="w-full text-sm min-w-[1200px]">
-            <thead className="sticky top-0 bg-[var(--bg)]">
+        {!loading && visibleRows.length > 0 && (
+          <table className="w-full text-sm min-w-[1180px]">
+            <thead className="bg-[var(--bg)]">
               <tr className="border-b border-white/10">
                 <th className="px-3 py-3 text-left text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest w-8"></th>
                 <th className="px-3 py-3 text-left text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest">Case ID</th>
@@ -990,13 +1027,13 @@ function AnomaliesModal() {
                 <th className="px-3 py-3 text-left text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest">Document</th>
                 <th className="px-3 py-3 text-left text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest">Vendor</th>
                 <th className="px-3 py-3 text-left text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest">Amount</th>
-              <th className="px-3 py-3 text-left text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest">Risk Score</th>
-              <th className="px-3 py-3 text-left text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest">SAP Module</th>
-              <th className="px-3 py-3 text-left text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest">Detected At</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/8">
-            {anomalies.map((anom) => (
+                <th className="px-3 py-3 text-left text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest">Risk Score</th>
+                <th className="px-3 py-3 text-left text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest">SAP Module</th>
+                <th className="px-3 py-3 text-left text-[10px] font-semibold text-[var(--muted)] uppercase tracking-widest">Detected At</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/8">
+            {visibleRows.map((anom) => (
               <tr key={anom.id} className="hover:bg-white/[0.025] transition-colors group">
                 <td className="px-3 py-3.5 text-[var(--muted)] group-hover:text-blue-400 cursor-pointer">
                   <CaretRight size={14} />
@@ -1016,7 +1053,7 @@ function AnomaliesModal() {
                 </td>
                 <td className="px-3 py-3.5">
                   <div className="text-[12px] font-semibold text-[var(--text)]">
-                    {anom.amount.currency} {anom.amount.value.toLocaleString()}
+                    {anom.amount.currency} {Number(anom.amount.value || 0).toLocaleString()}
                   </div>
                 </td>
                 <td className="px-3 py-3.5">
@@ -1032,7 +1069,7 @@ function AnomaliesModal() {
                     {anom.sapModule}
                   </span>
                 </td>
-                <td className="px-3 py-3.5 text-[12px] text-[var(--muted)] whitespace-nowrap">{anom.detectedAt}</td>
+                <td className="px-3 py-3.5 text-[12px] text-[var(--muted)] whitespace-nowrap">{formatDetectedAt(anom.detectedAt)}</td>
               </tr>
             ))}
             </tbody>
@@ -1040,15 +1077,8 @@ function AnomaliesModal() {
         )}
       </div>
 
-      <div className="px-6 py-3 border-t border-white/10 flex items-center justify-between">
-        <p className="text-xs text-[var(--muted)]">Showing {anomalies.length} detected fraud cases</p>
-        <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
-          <div className="w-3 h-3 rounded-full bg-slate-400 animate-pulse"></div>
-          Live preview loading, interactions may not be saved
-        </div>
-      </div>
-
-      <div className="px-6 pb-5 flex justify-end gap-2">
+      <div className="px-8 py-3 border-t border-white/10 flex items-center justify-between">
+        <p className="text-xs text-[var(--muted)]">Showing {rows.length} detected fraud cases</p>
         <button
           onClick={() => dispatch(closeModal())}
           className="px-6 py-2.5 rounded-lg bg-slate-700/40 hover:bg-slate-700/60 text-[var(--text)] text-sm font-semibold transition-colors"
