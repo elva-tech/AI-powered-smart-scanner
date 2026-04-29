@@ -9,16 +9,16 @@ import {
   GitBranch,
   FolderSimple,
   ShieldCheck,
-  Brain,
+  HardDrive,
 } from "@phosphor-icons/react";
-import { ShieldCheckIcon } from "lucide-react";
 
 const menu = [
-  { name: "Dashboard",       path: "/",          icon: SquaresFour  },
-  { name: "Rule Library",    path: "/rules",     icon: Books        },
-  { name: "AI Rule Architect",path: "/architect",icon: GitBranch    },
-  { name: "Case Management", path: "/cases",     icon: FolderSimple },
-  { name: "Security",        path: "/security",  icon: ShieldCheck  },
+  { name: "Dashboard",            path: "/",         icon: SquaresFour },
+  { name: "Rule Library",         path: "/rules",    icon: Books       },
+  { name: "AI Rule Architect",    path: "/architect",icon: GitBranch   },
+  { name: "Case Management",      path: "/cases",    icon: FolderSimple},
+  { name: "Security",             path: "/security", icon: ShieldCheck },
+  { name: "My Connections",       path: "/servers",  icon: HardDrive   },
 ];
 
 export default function Sidebar() {
@@ -30,7 +30,7 @@ export default function Sidebar() {
       {/* ── Brand ──────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2.5 px-4 py-5 border-b border-[var(--border)]">
         <div className="w-8 h-8 rounded-lg bg-[var(--primary)]/20 flex items-center justify-center flex-shrink-0">
-          <ShieldCheckIcon size={18} weight="duotone" className="text-[var(--primary)]" />
+          <ShieldCheck size={18} weight="duotone" className="text-[var(--primary)]" />
         </div>
         <div className="min-w-0">
           <p className="text-[11px] font-bold text-[var(--text)] leading-tight">AI Powered</p>

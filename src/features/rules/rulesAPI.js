@@ -159,7 +159,34 @@ export const DEPLOY_ENVIRONMENTS = [
 ];
 
 export const fetchRulesAPI = async () => { await delay(400); return { success: true, data: buildRules() }; };
-export const fetchEnvironmentsAPI = async () => { await delay(200); return { success: true, simEnvs: SIM_ENVIRONMENTS, deployEnvs: DEPLOY_ENVIRONMENTS }; };
+// export const fetchEnvironmentsAPI = async () => { await delay(200); return { success: true, simEnvs: SIM_ENVIRONMENTS, deployEnvs: DEPLOY_ENVIRONMENTS }; };
+
+export const fetchEnvironmentsAPI = async () => {
+  await delay(200);
+ 
+  // Read custom servers added via My Connections page
+  let customServers = [];
+  try {
+    const raw = localStorage.getItem("sap_custom_servers_v1");
+    if (raw) {
+      customServers = JSON.parse(raw).map(s => ({
+        id:      s.id,
+        name:    s.name,
+        desc:    s.description || s.hostname,
+        badge:   "Custom",
+        badgeCls:"text-violet-400 bg-violet-500/20 border-violet-500/30",
+        isProd:  false,
+        isCustom:true,
+      }));
+    }
+  } catch {}
+ 
+  return {
+    success:    true,
+    simEnvs:    SIM_ENVIRONMENTS,
+    deployEnvs: [...DEPLOY_ENVIRONMENTS, ...customServers],
+  };
+};
 export const deployRulesAPI = async (ids) => {
   await delay(600);
 

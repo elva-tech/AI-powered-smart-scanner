@@ -50,11 +50,11 @@ import apiClient from "../../services/apiClient";
 
 const LIFECYCLE_STEPS = [
   { key: "DRAFT",      label: "Draft",      Icon: Clock         },
+  { key: "DEPLOYED",   label: "Deploy",     Icon: CloudArrowUp  },
   { key: "SIMULATION", label: "Simulation", Icon: Play          },
   { key: "ACTIVE",     label: "Active",     Icon: CheckCircle   },
-  { key: "DEPLOYED",   label: "Deployed",   Icon: CloudArrowUp  },
 ];
-const LIFECYCLE_ORDER = { DRAFT: 0, SIMULATION: 1, ACTIVE: 2, DEPLOYED: 3, ARCHIVED: -1 };
+const LIFECYCLE_ORDER = { DRAFT: 0, DEPLOYED: 1, SIMULATION: 2, ACTIVE: 3, ARCHIVED: -1 };
 
 // Fully hardcoded — safe for Tailwind JIT
 const RISK_MAP = {
@@ -472,6 +472,7 @@ function ViewRuleModal() {
   const latest    = hasSim ? rule.simulationHistory[0] : null;
   const isActive  = rule.status === "ACTIVE";
   const isDeployed= rule.status === "DEPLOYED";
+  const isDraft   = rule.status === "DRAFT";
 
   const handleOpenDeploy = () => {
     dispatch(fetchEnvironments());
@@ -592,18 +593,29 @@ function ViewRuleModal() {
       )}
 
       {/* Status banners */}
-      {!hasSim && !isDeployed && (
+      {isDraft && (
         <div className="px-6 py-4 border-b border-white/8">
           <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
             <Warning size={17} weight="fill" className="text-amber-400 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm font-semibold text-amber-400">Simulation Required</p>
-              <p className="text-[11px] text-amber-400/75 mt-0.5">Run at least one simulation before activating the rule</p>
+              <p className="text-sm font-semibold text-amber-400">Deployment Required</p>
+              <p className="text-[11px] text-amber-400/75 mt-0.5">Deploy this rule to an environment before running simulation.</p>
             </div>
           </div>
         </div>
       )}
-      {hasSim && !isActive && !isDeployed && (
+      {isDeployed && !hasSim && (
+        <div className="px-6 py-4 border-b border-white/8">
+          <div className="flex items-start gap-3 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+            <CheckCircle size={17} weight="fill" className="text-blue-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-blue-400">Ready for Simulation</p>
+              <p className="text-[11px] text-blue-400/75 mt-0.5">Deployment completed. Run simulation to validate this rule.</p>
+            </div>
+          </div>
+        </div>
+      )}
+      {hasSim && !isActive && (
         <div className="px-6 py-4 border-b border-white/8">
           <div className="flex items-start gap-3 p-4 rounded-xl bg-teal-500/10 border border-teal-500/20">
             <CheckCircle size={17} weight="fill" className="text-teal-400 flex-shrink-0 mt-0.5" />
@@ -673,7 +685,15 @@ function ViewRuleModal() {
 
       {/* Footer */}
       <div className="px-6 py-4 flex items-center justify-end gap-2">
-        {!hasSim && !isDeployed && (
+        {isDraft && (
+          <button
+            onClick={handleOpenDeploy}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gradient-to-b from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 text-white text-xs font-semibold transition-all shadow-sm"
+          >
+            <UploadSimple size={13} weight="bold" /> Deploy to Environment
+          </button>
+        )}
+        {isDeployed && !hasSim && (
           <button
             onClick={() => { dispatch(closeModal()); dispatch(openSimulation(rule)); }}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-white text-xs font-semibold transition-all shadow-sm"
@@ -681,7 +701,7 @@ function ViewRuleModal() {
             <Play size={13} weight="fill" /> Run Simulation
           </button>
         )}
-        {hasSim && !isActive && !isDeployed && (
+        {hasSim && !isActive && (
           <>
             <button
               onClick={() => { dispatch(closeModal()); dispatch(openSimulation(rule)); }}
@@ -1057,11 +1077,11 @@ function AnomaliesModal() {
                   </div>
                 </td>
                 <td className="px-3 py-3.5">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-12 h-4 rounded ${getRiskBgColor(anom.riskScore)} border ${getRiskColor(anom.riskScore)} border-opacity-30 flex items-center px-1`}>
-                      <div className={`h-full w-full rounded-sm ${getRiskColor(anom.riskScore)} opacity-70`} style={{ width: `${anom.riskScore}%` }}></div>
+                  <div className="flex items-center gap-2 min-w-[86px]">
+                    <div className="w-12 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                      <div className={`h-full rounded-full ${getRiskColor(anom.riskScore)}`} style={{ width: `${Math.min(Math.max(Number(anom.riskScore) || 0, 0), 100)}%` }}></div>
                     </div>
-                    <span className={`text-[12px] font-bold ${getRiskTextColor(anom.riskScore)}`}>{anom.riskScore}</span>
+                    <span className={`text-[11px] font-semibold ${getRiskTextColor(anom.riskScore)}`}>{anom.riskScore}</span>
                   </div>
                 </td>
                 <td className="px-3 py-3.5">
@@ -1581,13 +1601,6 @@ export default function RuleLibraryFull({ onProcessRule, isProcessingRule = fals
 
   return (
     <div className="p-6 space-y-5 min-h-full">
-      {/* ✅ NEW: SAP Status indicator */}
-      {sapStatus && sapStatus.status === 'connected' && (
-        <div className="p-3 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[12px]">
-          ✓ SAP Connected - Rules ready for deployment
-        </div>
-      )}
-
       <p className="text-sm text-[var(--muted)]">Enterprise anomaly detection rule governance and lifecycle management</p>
 
       <StatsCards />
