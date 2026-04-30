@@ -6,6 +6,7 @@ import { useAppSelector } from "../app/hooks";
 import CaseManagement from "../pages/caseManagement";
 import Security from "../pages/Security";
 import AIRuleArchitect from "../pages/AIRuleArchitect";
+import MyConnections from "../pages/MyConnections";
 
 const ProtectedRoute = ({ children }) => {
   const user = useAppSelector((state) => state.auth.user);
@@ -46,7 +47,7 @@ export default function AppRoutes() {
           }
         />
 
-          <Route
+        <Route
           path="/security"
           element={
             <ProtectedRoute>
@@ -56,11 +57,20 @@ export default function AppRoutes() {
         />
 
 
-            <Route
+        <Route
           path="/architect"
           element={
             <ProtectedRoute>
               <AIRuleArchitect />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/servers"
+          element={
+            <ProtectedRoute>
+              <MyConnections />
             </ProtectedRoute>
           }
         />
