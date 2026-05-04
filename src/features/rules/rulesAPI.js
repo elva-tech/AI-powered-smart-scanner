@@ -161,6 +161,40 @@ export const DEPLOY_ENVIRONMENTS = [
 export const fetchRulesAPI = async () => { await delay(400); return { success: true, data: buildRules() }; };
 // export const fetchEnvironmentsAPI = async () => { await delay(200); return { success: true, simEnvs: SIM_ENVIRONMENTS, deployEnvs: DEPLOY_ENVIRONMENTS }; };
 
+const BUILTIN_STORAGE_KEY = "sap_builtins_v1";
+const BUILTIN_ID_TO_DEPLOY = { __DEV__: "DEV", __QAS__: "QAS", __PROD__: "PROD" };
+
+function loadBuiltinRowsForDeploy() {
+  try {
+    const raw = localStorage.getItem(BUILTIN_STORAGE_KEY);
+    if (raw === null || raw === undefined) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function mergeDeployEnvsWithBuiltins(customServers) {
+  const rows = loadBuiltinRowsForDeploy();
+  let base = DEPLOY_ENVIRONMENTS.map((d) => ({ ...d }));
+  if (rows !== null) {
+    const allowed = new Set(
+      rows.map((b) => BUILTIN_ID_TO_DEPLOY[b.id]).filter(Boolean)
+    );
+    base = base.filter((d) => allowed.has(d.id));
+    base = base.map((d) => {
+      const pair = Object.entries(BUILTIN_ID_TO_DEPLOY).find(([, dep]) => dep === d.id);
+      if (!pair) return d;
+      const [builtinId] = pair;
+      const b = rows.find((x) => x.id === builtinId);
+      if (!b) return d;
+      return { ...d, name: b.name, desc: b.description || d.desc };
+    });
+  }
+  return [...base, ...customServers];
+}
+
 export const fetchEnvironmentsAPI = async () => {
   await delay(200);
  
@@ -184,15 +218,15 @@ export const fetchEnvironmentsAPI = async () => {
   return {
     success:    true,
     simEnvs:    SIM_ENVIRONMENTS,
-    deployEnvs: [...DEPLOY_ENVIRONMENTS, ...customServers],
+    deployEnvs: mergeDeployEnvsWithBuiltins(customServers),
   };
 };
 export const deployRulesAPI = async (ids) => {
   await delay(600);
 
-  const rules = buildRules().map(r =>
+  const rules = buildRules().map((r) =>
     ids.includes(r.id)
-      ? { ...r, status: "DEPLOYED", lifecycle: "DEPLOYED" }
+      ? { ...r, status: "DEPLOYED", lifecycle: "DEPLOYED", deployedEnv: r.deployedEnv || "PROD" }
       : r
   );
 
@@ -201,11 +235,15 @@ export const deployRulesAPI = async (ids) => {
 
   return {
     success: true,
-    data: ids.map(id => ({
-      id,
-      status: "DEPLOYED",
-      lifecycle: "DEPLOYED"
-    }))
+    data: ids.map((id) => {
+      const row = rules.find((x) => x.id === id);
+      return {
+        id,
+        status: "DEPLOYED",
+        lifecycle: "DEPLOYED",
+        deployedEnv: row?.deployedEnv ?? "PROD",
+      };
+    }),
   };
 };
 export const activateRulesAPI = async (ids) => {
@@ -290,13 +328,12 @@ export const runSimulationAPI = async (ruleId, config) => {
 
 export const deployRuleToEnvAPI = async (ruleId, environment) => {
   await delay(800);
-  RULES_CACHE = buildRules();
-RULES_CACHE = buildRules().map(r =>
-  r.id === ruleId
-    ? { ...r, status: "DEPLOYED", lifecycle: "DEPLOYED" }
-    : r
-);
+  RULES_CACHE = buildRules().map((r) =>
+    r.id === ruleId
+      ? { ...r, status: "DEPLOYED", lifecycle: "DEPLOYED", deployedEnv: environment }
+      : r
+  );
 
-localStorage.setItem("rules", JSON.stringify(RULES_CACHE));
+  localStorage.setItem("rules", JSON.stringify(RULES_CACHE));
   return { success: true, data: { ruleId, environment, status: "DEPLOYED" } };
 };
