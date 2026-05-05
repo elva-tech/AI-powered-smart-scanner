@@ -180,11 +180,28 @@ function CaseModal({ caseId, onClose, onUpdate }) {
   const [taskError, setTaskError] = useState("");
   const [taskForm, setTaskForm] = useState({ title: "", assignTo: "", description: "", priority: "Medium", dueDate: "" });
   const [showAssign, setShowAssign] = useState(false);
+  const [detectedAnomalies, setDetectedAnomalies] = useState([]);
+  const [anomaliesLoading, setAnomaliesLoading] = useState(true);
   const scrollRef = useRef(null);
 
   useEffect(() => {
     setLoading(true);
     fetchCaseDetailAPI(caseId).then(r => { if (r.success) setData(r.data); setLoading(false); });
+    
+    // Fetch stored anomalies from database via API endpoint
+    setAnomaliesLoading(true);
+    fetch(`/sap/anomalies/list/?limit=100`)
+      .then(res => res.json())
+      .then(json => {
+        if (json.status === 'success' && json.anomalies) {
+          setDetectedAnomalies(json.anomalies);
+        }
+        setAnomaliesLoading(false);
+      })
+      .catch(err => {
+        console.error('Failed to fetch detected anomalies:', err);
+        setAnomaliesLoading(false);
+      });
   }, [caseId]);
 
   const handleAction = useCallback(async (action) => {
@@ -483,28 +500,73 @@ function CaseModal({ caseId, onClose, onUpdate }) {
                   </div>
                 </section>
 
-                {/* Anomaly Indicators */}
+                {/* Detected Anomalies from SAP OData */}
                 <section>
-                  <Sh dot="bg-orange-500" label={`Anomaly Indicators (${d.anomalyIndicators.length})`} />
-                  <div className="space-y-2">
-                    {d.anomalyIndicators.map((a, i) => {
-                      const bg = a.severity === "critical" ? "bg-red-500/10 border-red-500/20" : a.severity === "high" ? "bg-orange-500/10 border-orange-500/20" : "bg-amber-500/10 border-amber-500/20";
-                      const ic = a.severity === "critical" ? "text-red-400" : a.severity === "high" ? "text-orange-400" : "text-amber-400";
-                      return (
-                        <div key={i} className={`flex items-start gap-3 p-3.5 rounded-xl border ${bg}`}>
-                          <Warning size={14} weight="fill" className={`${ic} flex-shrink-0 mt-0.5`} />
-                          <div>
-                            <div className="flex items-center gap-2 mb-0.5">
-                              <span className="text-[12px] font-semibold text-[var(--text)]">{a.name}</span>
-                              <SevBadge sev={a.severity} />
-                            </div>
-                            <p className={`text-[11px] ${ic}`}>{a.desc}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <Sh dot="bg-orange-500" label={`Detected Duplicate Invoices from SAP (${detectedAnomalies.length})`} />
+                  {anomaliesLoading ? (
+                    <div className="flex items-center justify-center py-8 gap-2 text-[var(--muted)]">
+                      <CircleNotch size={16} className="animate-spin text-blue-400" />
+                      <span className="text-[12px]">Loading anomalies from SAP...</span>
+                    </div>
+                  ) : detectedAnomalies.length === 0 ? (
+                    <div className="py-8 text-center border border-dashed border-[var(--border)] rounded-xl">
+                      <Warning size={20} className="text-[var(--muted)] mx-auto mb-2" />
+                      <p className="text-[11px] text-[var(--muted)]">No duplicate invoice anomalies detected in SAP.</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-[var(--border)] overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-white/[0.03] border-b border-[var(--border)]">
+                          <tr>{["CASE ID", "VENDOR", "AMOUNT", "CURRENCY", "RISK SCORE", "RISK LEVEL", "MODULE", "DETECTED AT"].map(h => (
+                            <th key={h} className="px-4 py-2.5 text-left text-[10px] font-semibold text-[var(--muted)] tracking-widest uppercase">{h}</th>
+                          ))}</tr>
+                        </thead>
+                        <tbody className="divide-y divide-[var(--border)]">
+                          {detectedAnomalies.map((a, i) => {
+                            const riskBg = a.riskLevel === 'CRITICAL' ? 'bg-red-500/20 text-red-400' : a.riskLevel === 'HIGH' ? 'bg-orange-500/20 text-orange-400' : a.riskLevel === 'MEDIUM' ? 'bg-amber-500/20 text-amber-400' : 'bg-green-500/20 text-green-400';
+                            return (
+                              <tr key={i} className="hover:bg-white/[0.02]">
+                                <td className="px-4 py-2.5 text-[11px] font-mono text-blue-400">{a.caseId || a.case_id}</td>
+                                <td className="px-4 py-2.5 text-[12px] text-[var(--text)]">{a.vendorName || a.vendor_name || 'Unknown'}</td>
+                                <td className="px-4 py-2.5 text-[12px] font-semibold text-[var(--text)]">{parseFloat(a.amount).toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                                <td className="px-4 py-2.5 text-[11px] text-[var(--muted)]">{a.currency}</td>
+                                <td className="px-4 py-2.5 text-[12px] font-bold text-[var(--text)]">{a.riskScore || a.risk_score}/100</td>
+                                <td className="px-4 py-2.5"><span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${riskBg} border-opacity-30`}>{a.riskLevel || a.risk_level}</span></td>
+                                <td className="px-4 py-2.5"><span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30">{a.sapModule || a.sap_module || 'FI'}</span></td>
+                                <td className="px-4 py-2.5 text-[11px] text-[var(--muted)]">{new Date(a.detectedAt || a.detected_at).toLocaleDateString()} {new Date(a.detectedAt || a.detected_at).toLocaleTimeString()}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </section>
+
+                {/* Legacy Anomaly Indicators (Fallback) */}
+                {d.anomalyIndicators && d.anomalyIndicators.length > 0 && (
+                  <section>
+                    <Sh dot="bg-orange-500" label={`System Alerts (${d.anomalyIndicators.length})`} />
+                    <div className="space-y-2">
+                      {d.anomalyIndicators.map((a, i) => {
+                        const bg = a.severity === "critical" ? "bg-red-500/10 border-red-500/20" : a.severity === "high" ? "bg-orange-500/10 border-orange-500/20" : "bg-amber-500/10 border-amber-500/20";
+                        const ic = a.severity === "critical" ? "text-red-400" : a.severity === "high" ? "text-orange-400" : "text-amber-400";
+                        return (
+                          <div key={i} className={`flex items-start gap-3 p-3.5 rounded-xl border ${bg}`}>
+                            <Warning size={14} weight="fill" className={`${ic} flex-shrink-0 mt-0.5`} />
+                            <div>
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <span className="text-[12px] font-semibold text-[var(--text)]">{a.name}</span>
+                                <SevBadge sev={a.severity} />
+                              </div>
+                              <p className={`text-[11px] ${ic}`}>{a.desc}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
 
                 {/* Related Transactions */}
                 <section>
@@ -792,7 +854,36 @@ export default function CaseManagement() {
   useEffect(() => {
     // Support navigation from dashboard with pre-set status filter
     if (location.state?.statusFilter) setStatusF(location.state.statusFilter);
-    fetchCasesAPI().then(r => { if (r.success) setCases(r.data); setLoading(false); });
+    
+    // Fetch stored anomalies from database via API endpoint
+    setLoading(true);
+    fetch(`/sap/anomalies/list/?limit=1000`)
+      .then(res => res.json())
+      .then(json => {
+        if (json.status === 'success' && json.anomalies) {
+          // Transform anomalies into case format
+          const transformedCases = json.anomalies.map(a => ({
+            id: a.caseId || a.case_id || `FRD-${a.transactionId || a.transaction_id}`,
+            riskScore: a.riskScore || a.risk_score || 0,
+            title: `Duplicate Invoice: ${a.vendorName || a.vendor_name || 'Unknown Vendor'} - ${parseFloat(a.amount).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${a.currency}`,
+            ruleName: "Duplicate Invoice Detection",
+            ruleId: "RULE-DUPLICATE-INV",
+            environment: "PRODUCTION",
+            status: "New",
+            closureStatus: null,
+            assignee: "Unassigned",
+            createdAt: new Date(a.detectedAt || a.detected_at).toLocaleString(),
+            // Keep original anomaly data for detail modal
+            _anomaly: a
+          }));
+          setCases(transformedCases);
+        }
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error('Failed to fetch anomalies:', err);
+        setLoading(false);
+      });
   }, []);
 
   const filtered = cases.filter(c => {
@@ -819,16 +910,16 @@ export default function CaseManagement() {
 
             <div className="flex items-start justify-between">
               <div>
-                <h1 className="text-[17px] font-semibold text-[var(--text)]">Case Management - Anomaly Investigation Workflow</h1>
-                <p className="text-[12px] text-[var(--muted)] mt-0.5">Anomaly investigation case workflow</p>
+                <h1 className="text-[17px] font-semibold text-[var(--text)]">Detected Anomalies - Duplicate Invoice Investigation</h1>
+                <p className="text-[12px] text-[var(--muted)] mt-0.5">Live detected duplicate invoices from SAP OData endpoint</p>
               </div>
-              <span className="text-[12px] font-semibold text-[var(--text)] px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)]">{cases.length} Total Cases</span>
+              <span className="text-[12px] font-semibold text-[var(--text)] px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)]">{cases.length} Total Anomalies</span>
             </div>
 
             <div className="flex items-center gap-2.5">
               <div className="relative flex-1">
                 <MagnifyingGlass className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--muted)]" />
-                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by case ID, title, or rule name..."
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by anomaly ID, vendor, or rule..."
                   className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[13px] text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--primary)]" />
               </div>
               <FunnelSimple size={16} className="text-[var(--muted)] flex-shrink-0" />
@@ -859,7 +950,7 @@ export default function CaseManagement() {
                           onChange={e => setChecked(e.target.checked ? new Set(allIds) : new Set())}
                           className="w-4 h-4 rounded border-gray-600 cursor-pointer accent-[var(--primary)]" />
                       </th>
-                      {["CASE ID", "RISK", "TITLE", "RULE", "STATUS", "CLOSURE STATUS", "ASSIGNEE"].map(h => (
+                      {["ANOMALY ID", "RISK", "VENDOR / AMOUNT", "RULE", "STATUS", "CLOSURE STATUS", "ASSIGNEE"].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-[var(--muted)] tracking-widest uppercase whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -876,7 +967,7 @@ export default function CaseManagement() {
                         <td className="px-4 py-3.5"><span className={`text-[14px] font-bold ${RISK_COLOR(c.riskScore)}`}>{c.riskScore}</span></td>
                         <td className="px-4 py-3.5 max-w-[200px]">
                           <p className="text-[13px] font-medium text-[var(--text)] truncate">{c.title}</p>
-                          <p className={`text-[10px] font-semibold ${ENV_CLS[c.environment] || "text-[var(--muted)]"}`}>Env: {c.environment}</p>
+                          <p className="text-[10px] text-[var(--muted)]">{c.createdAt}</p>
                         </td>
                         <td className="px-4 py-3.5 max-w-[180px]">
                           <p className="text-[12px] text-blue-400 font-medium truncate hover:underline">{c.ruleName}</p>
