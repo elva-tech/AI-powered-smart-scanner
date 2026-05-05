@@ -332,20 +332,55 @@ function ActionBar() {
   );
 }
 
+/** Map stored deploy id → canonical tier for built-in card lookup */
+function normalizeDeployTier(deployedEnv) {
+  if (deployedEnv == null || deployedEnv === "") return null;
+  const id = String(deployedEnv);
+  const u = id.toUpperCase();
+  if (u === "DEV" || id === "__DEV__") return "DEV";
+  if (u === "QAS" || id === "__QAS__") return "QAS";
+  if (u === "PROD" || u === "PRD" || id === "__PROD__") return "PROD";
+  return null;
+}
+
+const TIER_TO_BUILTIN_ID = { DEV: "__DEV__", QAS: "__QAS__", PROD: "__PROD__" };
+
+function deployEnvColumnLabel(rule, builtins, customList) {
+  const env = rule.deployedEnv;
+  if (env == null || env === "") return "—";
+
+  const tier = normalizeDeployTier(env);
+  if (tier) {
+    const bid = TIER_TO_BUILTIN_ID[tier];
+    const card = builtins?.find((b) => b.id === bid);
+    if (card?.name) return card.name;
+    if (tier === "DEV") return "Dev";
+    if (tier === "QAS") return "Staging";
+    if (tier === "PROD") return "Prod";
+  }
+
+  const custom = customList?.find((s) => s.id === env);
+  if (custom?.name) return custom.name;
+
+  return "Custom";
+}
+
 // ─── Rule Table ───────────────────────────────────────────────────────────────
 function RuleTable({ rules }) {
   const dispatch = useAppDispatch();
   const { selected } = useAppSelector((s) => s.rules);
+  const builtins = useAppSelector((s) => s.servers?.builtins ?? []);
+  const customList = useAppSelector((s) => s.servers?.list ?? []);
   const allIds     = rules.map((r) => r.id);
   const allChecked = allIds.length > 0 && allIds.every((id) => selected.includes(id));
   const someCheck  = allIds.some((id) => selected.includes(id));
 
-  const HEADERS = ["RULE ID", "RULE NAME", "STATUS", "LIFECYCLE", "SAP MODULE", "RISK", "VERSION", "ORIGIN", "ACTIONS"];
+  const HEADERS = ["RULE ID", "RULE NAME", "STATUS", "LIFECYCLE", "SAP MODULE", "RISK", "VERSION", "ORIGIN", "DEPLOY ENV", "ACTIONS"];
 
   return (
     <div className="rounded-xl border border-[var(--border)] overflow-hidden bg-[var(--card)]">
       <div className="overflow-x-auto">
-        <table className="w-full text-sm min-w-[980px]">
+        <table className="w-full text-sm min-w-[1060px]">
           {/* Head */}
           <thead>
             <tr className="border-b border-[var(--border)] bg-[var(--bg)]">
@@ -370,7 +405,7 @@ function RuleTable({ rules }) {
           <tbody className="divide-y divide-[var(--border)]">
             {rules.length === 0 && (
               <tr>
-                <td colSpan={10} className="py-14 text-center text-[var(--muted)] text-sm">
+                <td colSpan={11} className="py-14 text-center text-[var(--muted)] text-sm">
                   No rules match your current filters.
                 </td>
               </tr>
@@ -438,6 +473,13 @@ function RuleTable({ rules }) {
                       <ShieldCheck size={13} className="text-teal-500/70" />
                       {rule.origin}
                     </div>
+                  </td>
+
+                  {/* Deploy environment */}
+                  <td className="px-3 py-3.5 cursor-pointer whitespace-nowrap" onClick={open}>
+                    <span className="text-[12px] font-medium text-[var(--text)] max-w-[220px] truncate block" title={deployEnvColumnLabel(rule, builtins, customList)}>
+                      {deployEnvColumnLabel(rule, builtins, customList)}
+                    </span>
                   </td>
 
                   {/* Actions */}
@@ -1118,6 +1160,8 @@ function SimulationModal() {
   const simEnvs  = useAppSelector((s) => s.rules.simEnvs);
   if (sim.step === 0 || !rule) return null;
 
+  const canRunLiveData = rule.status === "DEPLOYED" || !!rule.deployedEnv;
+
   const dateError = sim.config.fromDate && sim.config.toDate &&
     new Date(sim.config.toDate) < new Date(sim.config.fromDate);
 
@@ -1169,15 +1213,30 @@ function SimulationModal() {
           </div>
           <CaretRight size={16} className="text-[var(--muted)] mt-1 flex-shrink-0" />
         </button>
-        {/* Live Data */}
+        {/* Live Data — only after the rule has been deployed */}
         <button
-          onClick={() => { dispatch(setSimMode("live")); dispatch(setSimStep(3)); dispatch(fetchEnvironments()); }}
-          className="w-full flex items-start gap-4 p-4 rounded-xl border border-white/8 hover:border-emerald-500/40 hover:bg-emerald-500/5 text-left transition-all"
+          type="button"
+          disabled={!canRunLiveData}
+          onClick={() => {
+            if (!canRunLiveData) return;
+            dispatch(setSimMode("live"));
+            dispatch(setSimStep(3));
+            dispatch(fetchEnvironments());
+          }}
+          className={`w-full flex items-start gap-4 p-4 rounded-xl border text-left transition-all ${
+            canRunLiveData
+              ? "border-white/8 hover:border-emerald-500/40 hover:bg-emerald-500/5"
+              : "border-white/5 opacity-45 cursor-not-allowed"
+          }`}
         >
-          <div className="p-2.5 rounded-lg bg-emerald-500/15 text-emerald-400 flex-shrink-0"><Cpu size={20} /></div>
+          <div className={`p-2.5 rounded-lg flex-shrink-0 ${canRunLiveData ? "bg-emerald-500/15 text-emerald-400" : "bg-white/5 text-[var(--muted)]"}`}><Cpu size={20} /></div>
           <div className="flex-1">
             <p className="text-sm font-semibold text-[var(--text)]">Run with Live Data</p>
-            <p className="text-xs text-[var(--muted)] mt-0.5">Execute simulation against production SAP system within the specified date range</p>
+            <p className="text-xs text-[var(--muted)] mt-0.5">
+              {canRunLiveData
+                ? "Execute simulation against production SAP system within the specified date range"
+                : "Deploy this rule to an environment first to run simulations with live SAP data."}
+            </p>
           </div>
           <CaretRight size={16} className="text-[var(--muted)] mt-1 flex-shrink-0" />
         </button>

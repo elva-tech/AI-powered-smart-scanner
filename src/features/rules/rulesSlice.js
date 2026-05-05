@@ -164,9 +164,13 @@ const rulesSlice = createSlice({
     const bulkRejected = (s, a) => { s.bulkLoading = false; s.bulkError = a.payload; };
     const applyBulk    = (s, a) => {
       s.bulkLoading = false; s.modalType = null;
-      a.payload.forEach(({ id, status, lifecycle, activatedAt }) => {
+      a.payload.forEach(({ id, status, lifecycle, activatedAt, deployedEnv }) => {
         const r = s.list.find(x => x.id === id);
-        if (r) { r.status = status; r.lifecycle = lifecycle; if (activatedAt) r.activatedAt = activatedAt; }
+        if (r) {
+          r.status = status; r.lifecycle = lifecycle;
+          if (activatedAt) r.activatedAt = activatedAt;
+          if (deployedEnv != null) r.deployedEnv = deployedEnv;
+        }
       });
       s.selected = [];
     };
