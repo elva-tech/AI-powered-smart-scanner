@@ -69,10 +69,20 @@ function Markdown({ text }) {
             : <span key={j}>{p}</span>
         );
         if (line.startsWith("- ") || line.startsWith("• ")) {
+          const cleanLine = line.replace(/^[-•]\s*/, "");
+
+          const bulletParts = cleanLine.split(/\*\*(.+?)\*\*/g);
+
+          const bulletRendered = bulletParts.map((p, j) =>
+            j % 2 === 1
+              ? <strong key={j} className="text-white font-semibold">{p}</strong>
+              : <span key={j}>{p}</span>
+          );
+
           return (
             <div key={i} className="flex items-start gap-2 py-0.5">
               <span className="text-blue-400 mt-1 flex-shrink-0 text-[10px]">●</span>
-              <span>{rendered.slice(1)}</span>
+              <span>{bulletRendered}</span>
             </div>
           );
         }
@@ -345,14 +355,23 @@ export default function AIRuleArchitect() {
 
       setTyping(false);
 
-      const added = addMessage({
-        role:      "ai",
-        type:      resp.type || "info",
-        text:      resp.reply,
-        module:    resp.module,
-        riskScore: resp.riskScore,
-        cds:       resp.cdsCode,
-      });
+      // Remove CDS block from reply text if cdsCode exists
+        let cleanReply = resp.reply || "";
+
+        if (resp.cdsCode) {
+          cleanReply = cleanReply
+            .replace(/```abap[\s\S]*?```/gi, "")
+            .trim();
+        }
+
+        const added = addMessage({
+          role: "ai",
+          type: resp.type || "info",
+          text: cleanReply,
+          module: resp.module,
+          riskScore: resp.riskScore,
+          cds: resp.cdsCode,
+        });
 
       if (resp.type === "rule_result") {
         setLastRule({

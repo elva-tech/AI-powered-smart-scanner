@@ -500,7 +500,7 @@ function CaseModal({ caseId, onClose, onUpdate }) {
                   </div>
                 </section>
 
-                {/* Detected Anomalies from SAP OData */}
+                {/* Detected Anomalies from SAP OData
                 <section>
                   <Sh dot="bg-orange-500" label={`Detected Duplicate Invoices from SAP (${detectedAnomalies.length})`} />
                   {anomaliesLoading ? (
@@ -541,7 +541,7 @@ function CaseModal({ caseId, onClose, onUpdate }) {
                       </table>
                     </div>
                   )}
-                </section>
+                </section> */}
 
                 {/* Legacy Anomaly Indicators (Fallback) */}
                 {d.anomalyIndicators && d.anomalyIndicators.length > 0 && (
@@ -862,20 +862,26 @@ export default function CaseManagement() {
       .then(json => {
         if (json.status === 'success' && json.anomalies) {
           // Transform anomalies into case format
-          const transformedCases = json.anomalies.map(a => ({
-            id: a.caseId || a.case_id || `FRD-${a.transactionId || a.transaction_id}`,
-            riskScore: a.riskScore || a.risk_score || 0,
-            title: `Duplicate Invoice: ${a.vendorName || a.vendor_name || 'Unknown Vendor'} - ${parseFloat(a.amount).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${a.currency}`,
-            ruleName: "Duplicate Invoice Detection",
-            ruleId: "RULE-DUPLICATE-INV",
-            environment: "PRODUCTION",
-            status: "New",
-            closureStatus: null,
-            assignee: "Unassigned",
-            createdAt: new Date(a.detectedAt || a.detected_at).toLocaleString(),
-            // Keep original anomaly data for detail modal
-            _anomaly: a
-          }));
+          const transformedCases = json.anomalies.map((a, idx) => {
+            // Auto-generate Case ID if not present
+            const caseId = a.caseId || a.case_id || `C-${8000 + idx}`;
+            const title = `${a.vendorName || a.vendor_name || 'Unknown Vendor'} - ${parseFloat(a.amount).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${a.currency}`;
+            
+            return {
+              id: caseId,
+              riskScore: a.riskScore || a.risk_score || 0,
+              title: title,
+              ruleName: "Duplicate Invoice Detection",
+              ruleId: "RULE-DUPLICATE-INV",
+              environment: "PRODUCTION",
+              status: "New",
+              closureStatus: null,
+              assignee: "Unassigned",
+              createdAt: new Date(a.detectedAt || a.detected_at).toLocaleString(),
+              // Keep original anomaly data for detail modal
+              _anomaly: a
+            };
+          });
           setCases(transformedCases);
         }
         setLoading(false);
@@ -950,7 +956,7 @@ export default function CaseManagement() {
                           onChange={e => setChecked(e.target.checked ? new Set(allIds) : new Set())}
                           className="w-4 h-4 rounded border-gray-600 cursor-pointer accent-[var(--primary)]" />
                       </th>
-                      {["ANOMALY ID", "RISK", "VENDOR / AMOUNT", "RULE", "STATUS", "CLOSURE STATUS", "ASSIGNEE"].map(h => (
+                      {["CASE ID", "RISK", "TITLE", "RULE", "STATUS", "CLOSURE STATUS", "ASSIGNEE"].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-[var(--muted)] tracking-widest uppercase whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -963,14 +969,14 @@ export default function CaseManagement() {
                         <td className="px-4 py-3.5" onClick={e => { e.stopPropagation(); toggleCheck(c.id); }}>
                           <input type="checkbox" checked={checked.has(c.id)} onChange={() => toggleCheck(c.id)} className="w-4 h-4 rounded border-gray-600 cursor-pointer accent-[var(--primary)]" />
                         </td>
-                        <td className="px-4 py-3.5"><span className="text-[12px] font-mono font-medium text-[var(--text)]">{c.id}</span></td>
+                        <td className="px-4 py-3.5"><span className="text-[12px] font-mono font-medium text-blue-400">{c.id}</span></td>
                         <td className="px-4 py-3.5"><span className={`text-[14px] font-bold ${RISK_COLOR(c.riskScore)}`}>{c.riskScore}</span></td>
-                        <td className="px-4 py-3.5 max-w-[200px]">
+                        <td className="px-4 py-3.5 max-w-[280px]">
                           <p className="text-[13px] font-medium text-[var(--text)] truncate">{c.title}</p>
                           <p className="text-[10px] text-[var(--muted)]">{c.createdAt}</p>
                         </td>
                         <td className="px-4 py-3.5 max-w-[180px]">
-                          <p className="text-[12px] text-blue-400 font-medium truncate hover:underline">{c.ruleName}</p>
+                          <p className="text-[12px] font-medium text-[var(--text)] truncate hover:underline">{c.ruleName}</p>
                           <p className="text-[10px] font-mono text-[var(--muted)]">{c.ruleId}</p>
                         </td>
                         <td className="px-4 py-3.5"><StatusBadge status={c.status} /></td>
