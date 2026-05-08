@@ -28,6 +28,7 @@ import {
   ListChecks, ArrowCounterClockwise, TrendUp, Plus, Paperclip,
   UserPlus, ArrowRight, CheckFat,
 } from "@phosphor-icons/react";
+import { loadRiskConfigs, resolveRiskLevelByAmount } from "../features/cases/riskConfig";
 
 // ─── Style maps ───────────────────────────────────────────────────────────────
 const RISK_COLOR = s => s >= 90 ? "text-red-400" : s >= 75 ? "text-orange-400" : s >= 60 ? "text-yellow-400" : "text-green-400";
@@ -45,6 +46,13 @@ const STATUS_CLS = {
   "Escalated": "bg-red-500/20 text-red-300 border border-red-500/30",
 };
 const ENV_CLS = { STAGING: "text-amber-400", PRODUCTION: "text-red-400", DEVELOPMENT: "text-emerald-400" };
+const RISK_LEVEL_BADGE = {
+  LOW: "bg-green-500/20 text-green-400 border border-green-500/30",
+  MEDIUM: "bg-amber-500/20 text-amber-400 border border-amber-500/30",
+  HIGH: "bg-orange-500/20 text-orange-400 border border-orange-500/30",
+  CRITICAL: "bg-red-500/20 text-red-400 border border-red-500/30",
+};
+
 
 // ─── Atoms ────────────────────────────────────────────────────────────────────
 const SevBadge = memo(({ sev }) =>
@@ -865,6 +873,7 @@ export default function CaseManagement() {
           const transformedCases = json.anomalies.map(a => ({
             id: a.caseId || a.case_id || `FRD-${a.transactionId || a.transaction_id}`,
             riskScore: a.riskScore || a.risk_score || 0,
+            amountValue: Number(a.amount) || 0,
             title: `Duplicate Invoice: ${a.vendorName || a.vendor_name || 'Unknown Vendor'} - ${parseFloat(a.amount).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${a.currency}`,
             ruleName: "Duplicate Invoice Detection",
             ruleId: "RULE-DUPLICATE-INV",
@@ -885,6 +894,8 @@ export default function CaseManagement() {
         setLoading(false);
       });
   }, []);
+
+  const riskConfigs = loadRiskConfigs();
 
   const filtered = cases.filter(c => {
     const q = search.toLowerCase();
@@ -958,13 +969,24 @@ export default function CaseManagement() {
                   <tbody className="divide-y divide-[var(--border)]">
                     {filtered.length === 0 && <tr><td colSpan={8} className="px-4 py-12 text-center text-[var(--muted)] text-sm">No cases match your filters.</td></tr>}
                     {filtered.map(c => (
+                      (() => {
+                        const matchedRiskLevel = resolveRiskLevelByAmount(c.amountValue, riskConfigs);
+                        return (
                       <tr key={c.id} onClick={() => setSelected(c.id)}
                         className={`cursor-pointer transition-colors ${checked.has(c.id) ? "bg-[var(--primary)]/5" : "hover:bg-white/[0.025]"}`}>
                         <td className="px-4 py-3.5" onClick={e => { e.stopPropagation(); toggleCheck(c.id); }}>
                           <input type="checkbox" checked={checked.has(c.id)} onChange={() => toggleCheck(c.id)} className="w-4 h-4 rounded border-gray-600 cursor-pointer accent-[var(--primary)]" />
                         </td>
                         <td className="px-4 py-3.5"><span className="text-[12px] font-mono font-medium text-[var(--text)]">{c.id}</span></td>
-                        <td className="px-4 py-3.5"><span className={`text-[14px] font-bold ${RISK_COLOR(c.riskScore)}`}>{c.riskScore}</span></td>
+                        <td className="px-4 py-3.5">
+                          {matchedRiskLevel ? (
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${RISK_LEVEL_BADGE[matchedRiskLevel]}`}>
+                              {matchedRiskLevel}
+                            </span>
+                          ) : (
+                            <span className={`text-[14px] font-bold ${RISK_COLOR(c.riskScore)}`}>{c.riskScore}</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3.5 max-w-[200px]">
                           <p className="text-[13px] font-medium text-[var(--text)] truncate">{c.title}</p>
                           <p className="text-[10px] text-[var(--muted)]">{c.createdAt}</p>
@@ -977,6 +999,8 @@ export default function CaseManagement() {
                         <td className="px-4 py-3.5">{c.closureStatus ? <span className="text-[12px] text-[var(--text)]">{c.closureStatus}</span> : <span className="text-[12px] text-[var(--muted)]">—</span>}</td>
                         <td className="px-4 py-3.5"><AssigneeChip name={c.assignee} /></td>
                       </tr>
+                        );
+                      })()
                     ))}
                   </tbody>
                 </table>
