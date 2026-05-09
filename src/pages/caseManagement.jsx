@@ -28,7 +28,7 @@ import {
   ListChecks, ArrowCounterClockwise, TrendUp, Plus, Paperclip,
   UserPlus, ArrowRight, CheckFat,
 } from "@phosphor-icons/react";
-import { loadRiskConfigs, resolveRiskLevelByAmount } from "../features/cases/riskConfig";
+import { loadRiskConfigs, resolveRiskLevelByAmount, RISK_CONFIG_STORAGE_KEY } from "../features/cases/riskConfig";
 
 // ─── Style maps ───────────────────────────────────────────────────────────────
 const RISK_COLOR = s => s >= 90 ? "text-red-400" : s >= 75 ? "text-orange-400" : s >= 60 ? "text-yellow-400" : "text-green-400";
@@ -858,6 +858,7 @@ export default function CaseManagement() {
   const [closureF, setClosureF] = useState("All Resolutions");
   const [selected, setSelected] = useState(null);
   const [checked, setChecked] = useState(new Set());
+  const [riskConfigs, setRiskConfigs] = useState(() => loadRiskConfigs());
 
   useEffect(() => {
     // Support navigation from dashboard with pre-set status filter
@@ -873,12 +874,16 @@ export default function CaseManagement() {
           const transformedCases = json.anomalies.map((a, idx) => {
             // Auto-generate Case ID if not present
             const caseId = a.caseId || a.case_id || `C-${8000 + idx}`;
-            const title = `${a.vendorName || a.vendor_name || 'Unknown Vendor'} - ${parseFloat(a.amount).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${a.currency}`;
+            const amountValue = Number(a.amount?.value ?? a.Amount ?? a.amount ?? 0) || 0;
+            const currency = a.amount?.currency || a.Currency || a.currency || "USD";
+            const title = `${a.vendorName || a.vendor_name || 'Unknown Vendor'} - ${amountValue.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${currency}`;
             
             return {
               id: caseId,
               riskScore: a.riskScore || a.risk_score || 0,
-              title: title,
+              amountValue,
+              amountCurrency: currency,
+              title,
               ruleName: "Duplicate Invoice Detection",
               ruleId: "RULE-DUPLICATE-INV",
               environment: "PRODUCTION",
@@ -900,7 +905,16 @@ export default function CaseManagement() {
       });
   }, []);
 
-  const riskConfigs = loadRiskConfigs();
+  // Listen for risk config changes
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === RISK_CONFIG_STORAGE_KEY) {
+        setRiskConfigs(loadRiskConfigs());
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   const filtered = cases.filter(c => {
     const q = search.toLowerCase();

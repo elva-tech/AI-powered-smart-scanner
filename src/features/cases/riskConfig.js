@@ -40,10 +40,14 @@ export function resolveRiskLevelByAmount(amount, configs = loadRiskConfigs()) {
   const value = Number(amount);
   if (!Number.isFinite(value) || value < 0) return null;
   const sorted = normalizeConfigs(configs);
+  if (sorted.length === 0) return null;
+
   let lowerBound = 1;
   for (const cfg of sorted) {
     if (value >= lowerBound && value <= cfg.maxValue) return cfg.level;
     lowerBound = cfg.maxValue + 1;
   }
-  return null;
+
+  // If the amount exceeds the highest configured threshold, assign the highest risk level.
+  return sorted[sorted.length - 1].level;
 }
