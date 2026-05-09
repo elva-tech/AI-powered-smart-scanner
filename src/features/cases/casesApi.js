@@ -11,6 +11,8 @@
  *   GET  /api/investigators            ← real-time investigator list
  */
 
+import apiClient from '../../services/apiClient';
+
 const delay = (ms = 350) => new Promise(r => setTimeout(r, ms));
 
 // ─── Investigators (real-time list) ──────────────────────────────────────────
@@ -231,11 +233,262 @@ function buildGenericDetail(c) {
 export const fetchCasesAPI = async () => { await delay(350); return { success:true, data:SEED_CASES }; };
 
 export const fetchCaseDetailAPI = async (id) => {
-  await delay(300);
-  const c = SEED_CASES.find(x => x.id === id);
-  if (!c) return { success:false, error:"Not found" };
-  const detail = id === "C-8914" ? DETAIL_8914 : buildGenericDetail(c);
-  return { success:true, data:{ ...c, detail } };
+  try {
+    const response = await apiClient.get(
+      `/sap/cases/${encodeURIComponent(id)}/`
+    );
+
+    const apiData = response.data;
+
+    if (apiData?.status !== "success") {
+      return {
+        success: false,
+        error: "Case detail not found",
+      };
+    }
+
+    const c = apiData.data;
+
+    // UI-compatible transformed object
+    const transformedCase = {
+      id: c.caseId,
+      caseId: c.caseId,
+      riskScore: c.riskScore || 0,
+      title: `Duplicate Invoice Detection - ${c.vendor}`,
+      ruleName: "Duplicate Invoice Check",
+      ruleId: c.ruleId || "RULE-DUP-001",
+      environment: "SAP",
+      status: c.reviewed ? "Reviewed" : "New",
+      closureStatus: null,
+      assignee: c.reviewedBy || "Unassigned",
+      createdAt: c.detectedAt,
+
+      detail: {
+        aiSummary: {
+          confidence: c.riskScore || 0,
+          recommendation:
+            c.riskScore >= 80 ? "escalate" : "investigate",
+          summary:
+            "Potential duplicate invoice detected based on invoice comparison and vendor validation.",
+          keyFindings: [
+            `Original Invoice: ${c.raw?.OriginalInvoiceDoc || "N/A"}`,
+            `Duplicate Invoice: ${c.raw?.DuplicateInvoiceDoc || "N/A"}`,
+            `Vendor: ${c.vendor || "N/A"}`,
+            `Amount: ${c.amount?.value || 0} ${
+              c.amount?.currency || ""
+            }`,
+          ],
+          riskAssessment:
+            c.riskLevel === "HIGH"
+              ? "High probability duplicate invoice fraud."
+              : "Requires investigator review.",
+        },
+
+        financialImpact: {
+          potentialLoss: c.amount?.value || 0,
+          recoveryProbability:
+            c.riskLevel === "HIGH" ? 25 : 70,
+          estimatedRecovery:
+            (c.amount?.value || 0) *
+            (c.riskLevel === "HIGH" ? 0.25 : 0.7),
+        },
+
+        transaction: {
+          documentNumber: c.document || "N/A",
+          amount: `${c.amount?.value || 0} ${
+            c.amount?.currency || ""
+          }`,
+          postingDate: c.raw?.OriginalPostingDate || "N/A",
+          documentDate: c.raw?.OriginalDocumentDate || "N/A",
+          companyCode: c.raw?.CompanyCode || "N/A",
+          fiscalYearPeriod: c.raw?.FiscalYear || "N/A",
+          reference: c.transactionId || "N/A",
+          headerText: c.raw?.OriginalHeaderText || "",
+        },
+
+        customerDetails: {
+          id: c.vendor || "N/A",
+          name: c.vendor || "N/A",
+          accountGroup: "Vendor",
+          country: "N/A",
+          city: "N/A",
+          createdDate: "N/A",
+          changedDate: "N/A",
+          paymentTerms: "N/A",
+          bankAccount: "N/A",
+        },
+
+        riskIndicators: [
+          {
+            label: "Financial Risk",
+            score: c.riskScore || 0,
+            bullets: [
+              `Invoice Amount: ${c.amount?.value || 0} ${
+                c.amount?.currency || ""
+              }`,
+              `Risk Level: ${c.riskLevel || "UNKNOWN"}`,
+            ],
+          },
+        ],
+
+        behavioralPatterns: [
+          {
+            name: "Duplicate Invoice Submission",
+            severity: c.riskLevel?.toLowerCase() || "medium",
+            frequency: "Detected Once",
+            last: c.detectedAt || "N/A",
+          },
+        ],
+
+        complianceIssues: [
+          {
+            law: "Internal Finance Policy",
+            issue: "Potential duplicate invoice payment",
+            severity: c.riskLevel?.toLowerCase() || "medium",
+            penalty: "Manual review required",
+          },
+        ],
+
+        networkAnalysis: [
+          {
+            entityId: c.vendor || "N/A",
+            type: "Vendor",
+            relationship: "Invoice Creator",
+            riskLevel: c.riskLevel?.toLowerCase() || "medium",
+          },
+        ],
+
+        anomalyIndicators: [
+          {
+            name: "Duplicate Invoice",
+            severity: c.riskLevel?.toLowerCase() || "medium",
+            desc: `Duplicate invoice detected between ${
+              c.raw?.OriginalInvoiceDoc || "N/A"
+            } and ${
+              c.raw?.DuplicateInvoiceDoc || "N/A"
+            }`,
+          },
+        ],
+
+        relatedTransactions: [
+          {
+            docId: c.raw?.OriginalInvoiceDoc || "N/A",
+            type: "Original Invoice",
+            date: c.raw?.OriginalDocumentDate || "N/A",
+            amount: `${c.amount?.value || 0} ${
+              c.amount?.currency || ""
+            }`,
+            status: c.raw?.OriginalStatus || "N/A",
+          },
+          {
+            docId: c.raw?.DuplicateInvoiceDoc || "N/A",
+            type: "Duplicate Invoice",
+            date: c.raw?.DuplicateDocumentDate || "N/A",
+            amount: `${c.amount?.value || 0} ${
+              c.amount?.currency || ""
+            }`,
+            status: c.raw?.DuplicateStatus || "N/A",
+          },
+        ],
+
+        auditTrail: [
+          {
+            event: "Case Created",
+            timestamp: c.detectedAt || "N/A",
+            by: "System",
+            desc:
+              "Automatic duplicate invoice detection triggered",
+          },
+        ],
+
+        attachments: [],
+
+        evidence: [
+          `Vendor Code: ${c.vendorCode || "N/A"}`,
+          `Transaction ID: ${c.transactionId || "N/A"}`,
+          `SAP Module: ${c.sapModule || "N/A"}`,
+          `Risk Level: ${c.riskLevel || "N/A"}`,
+        ],
+
+        aiRecommendations: [
+          "Review duplicate invoices",
+          "Validate vendor payments",
+          "Check approval workflow",
+          "Verify posting dates",
+        ],
+        ruleInfo: {
+          ruleName: "Duplicate Invoice Check",
+          ruleId: c.ruleId || "RULE-DUP-001",
+          environment: "SAP",
+          detectionTime: c.detectedAt || "N/A",
+        },
+        userInfo: {
+          userId: c.reviewedBy || "SYSTEM",
+          userName: c.reviewedBy || "System User",
+          role: "Fraud Analyst",
+          department: "Finance",
+          location: "N/A",
+          lastLogin: c.detectedAt || "N/A",
+          ipAddress: "N/A",
+        },
+      },
+    };
+
+    // SAFE FALLBACKS
+    const d = transformedCase.detail;
+
+    d.aiSummary = d.aiSummary || {
+      confidence: 0,
+      recommendation: "investigate",
+      summary: "",
+      keyFindings: [],
+      riskAssessment: "",
+    };
+
+    d.financialImpact = d.financialImpact || {
+      potentialLoss: 0,
+      recoveryProbability: 0,
+      estimatedRecovery: 0,
+    };
+    d.ruleInfo = d.ruleInfo || {
+      ruleName: "",
+      ruleId: "",
+      environment: "",
+      detectionTime: "",
+    };
+    d.userInfo = d.userInfo || {
+      userId: "",
+      userName: "",
+      role: "",
+      department: "",
+      location: "",
+      lastLogin: "",
+      ipAddress: "",
+    };
+
+    d.riskIndicators = d.riskIndicators || [];
+    d.behavioralPatterns = d.behavioralPatterns || [];
+    d.complianceIssues = d.complianceIssues || [];
+    d.networkAnalysis = d.networkAnalysis || [];
+    d.anomalyIndicators = d.anomalyIndicators || [];
+    d.relatedTransactions = d.relatedTransactions || [];
+    d.auditTrail = d.auditTrail || [];
+    d.attachments = d.attachments || [];
+    d.aiRecommendations = d.aiRecommendations || [];
+    d.evidence = d.evidence || [];
+
+    return {
+      success: true,
+      data: transformedCase,
+    };
+  } catch (error) {
+    console.error("fetchCaseDetailAPI error:", error);
+
+    return {
+      success: false,
+      error: error.message || "Failed to fetch case detail",
+    };
+  }
 };
 
 export const updateCaseAPI = async (id, payload) => {

@@ -113,49 +113,58 @@ export function clearChatHistory() {
  *   }
  */
 export async function sendMessage({ message, sessionId, ruleContext }) {
-  // Simulate network latency
-  await new Promise(r => setTimeout(r, 1200 + Math.random() * 800));
+  try {
+    const res = await fetch("http://localhost:8000/sap/rule-agent/", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        message: message,
+         sessionId: sessionId,
+      }),
+    });
 
-  const low = message.toLowerCase();
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
 
-  // "What can you do?" branch
-  if (low.includes("what") && low.includes("can you")) {
+    const data = await res.json();
+
+    if (data.status !== "success") {
+      throw new Error(data.message || "Backend error");
+    }
+
+    // 🧠 Convert backend → UI format
+    const aiText = data.reply || "I've processed your request.";
+
+    const isRuleReady = data.type === "rule_result";
+
+    return {
+      type: isRuleReady ? "rule_result" : "info",
+
+      // reply: removeCodeBlocks(aiText),
+      reply: aiText,
+
+      module: detectModule(data.intent),
+
+      riskScore: estimateRisk(data),
+
+      cdsCode: data.cdsCode || "",
+
+      threshold: extractAmount(message),
+
+      timeDiff: extractDays(message),
+    };
+
+  } catch (err) {
+    console.error("❌ Chat API Error:", err);
+
     return {
       type: "info",
-      reply: `I can help you create custom anomaly detection rules for SAP systems. Here are some things I can do:
-
-🔍 **Detection Types:**
-- Invoice timing anomalies (posting vs document date gaps)
-- Duplicate invoice/payment detection
-- Amount threshold violations
-- Segregation of duties checks
-- Vendor master change alerts
-- After-hours transaction monitoring
-- Budget variance detection
-
-📦 **SAP Modules Supported:**
-FI (Financial Accounting), MM (Materials Management), SD (Sales & Distribution), CO (Controlling), HR (Human Resources), PP (Production Planning)
-
-🛠️ **What I Generate:**
-- CDS view code ready for SAP deployment
-- Risk scoring logic (0-100)
-- Anomaly flagging conditions
-
-Just describe the pattern you want to detect in plain English!`,
+      reply: "⚠️ Unable to connect to AI service. Please try again.",
     };
   }
-
-  // Rule generation branch
-  const parsed = _mockParseRule(message, ruleContext);
-  return {
-    type: "rule_result",
-    reply: _mockBuildReply(parsed),
-    module:    parsed.module,
-    riskScore: parsed.riskScore,
-    cdsCode:   parsed.cds,
-    threshold: parsed.threshold,
-    timeDiff:  parsed.timeDiff,
-  };
 }
 
 // ─── Mock helpers (DELETE these when Django is connected) ─────────────────────
@@ -265,3 +274,37 @@ I've generated the CDS view code for this rule. Would you like to:
 - **Add this to your Rule Library**
 - **Test it with a simulation**`;
 }
+
+function detectModule(intent = "") {
+  const t = intent.toLowerCase();
+
+  if (t.includes("invoice") || t.includes("fi")) return "FI";
+  if (t.includes("vendor") || t.includes("mm")) return "MM";
+  if (t.includes("sales") || t.includes("sd")) return "SD";
+  if (t.includes("cost") || t.includes("co")) return "CO";
+  if (t.includes("employee") || t.includes("hr")) return "HR";
+
+  return "FI";
+}
+
+function extractAmount(text = "") {
+  const match = text.match(/\$?([\d,]+)/);
+  return match ? parseInt(match[1].replace(/,/g, "")) : 50000;
+}
+
+function extractDays(text = "") {
+  const match = text.match(/(\d+)\s*days?/i);
+  return match ? parseInt(match[1]) : 7;
+}
+
+function estimateRisk(data) {
+  // If backend later sends risk → use it
+  if (data.risk_score) return data.risk_score;
+
+  // fallback logic
+  return data.approved ? 75 : 50;
+}
+
+// function removeCodeBlocks(text = "") {
+//   return text.replace(/```[\s\S]*?```/g, "").trim();
+// }
