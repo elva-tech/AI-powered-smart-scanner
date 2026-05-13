@@ -57,6 +57,18 @@ const INITIAL_MSG = {
   timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
 };
 
+const normalizeDynamicParameters = (raw) => {
+  if (!raw) return {};
+  let parsed = raw;
+  if (typeof parsed === "string") {
+    try { parsed = JSON.parse(parsed); } catch { return {}; }
+  }
+  if (typeof parsed !== "object") return {};
+  if (Array.isArray(parsed)) return { LIST: parsed };
+  if (parsed.PARAMETERS && typeof parsed.PARAMETERS === "object") return parsed.PARAMETERS;
+  return parsed;
+};
+
 // ─── Markdown renderer ────────────────────────────────────────────────────────
 function Markdown({ text }) {
   return (
@@ -419,9 +431,20 @@ export default function AIRuleArchitect() {
       cds: message.cds || message.cdsCode || "",
       cdsBaseinfo: message.cdsBaseinfo || "",
       cdsXml: message.cdsXml || "",
-      dynamicParameters: message.dynamicParameters || {},
+      dynamicParameters: normalizeDynamicParameters(
+        message.dynamicParameters || message.parameters || message.PARAMETERS || {}
+      ),
     };
   })();
+
+  const latestRuleMessage = [...messages].reverse().find(m => m.type === "rule_result");
+  const resolvedDynamicParameters = normalizeDynamicParameters(
+    currentRule?.dynamicParameters ||
+    latestRuleMessage?.dynamicParameters ||
+    latestRuleMessage?.parameters ||
+    latestRuleMessage?.PARAMETERS ||
+    {}
+  );
 
   console.log("Current Rule for saving:", currentRule); // Debug log
 
@@ -434,10 +457,7 @@ export default function AIRuleArchitect() {
     return;
   }
 
-  try {
-    setSavedToLib(true);
-
-    const newRule = {
+  const newRule = {
       id: `RULE-AI-${Date.now()}`,
 
       name: `AI: ${currentRule.moduleName} Anomaly Rule`,
@@ -470,40 +490,46 @@ export default function AIRuleArchitect() {
         timeWindow: currentRule.timeDiff || 0,
         varianceThreshold: 0,
       },
+      simulationHistory: [],
+      deployedEnv: null,
+      activatedAt: null,
 
       cdsCode: currentRule.cds || currentRule.cdsCode || "",
       cdsBaseinfo: currentRule.cdsBaseinfo || "",
       cdsXml: currentRule.cdsXml || "",
-      dynamicParameters: currentRule.dynamicParameters || {},
+      dynamicParameters: resolvedDynamicParameters,
+      parameters: resolvedDynamicParameters,
 
-    };
+  };
+
+  try {
+    setSavedToLib(true);
 
     console.log("New Rule payload:", newRule); // Debug log
 
-    // ── SAVE TO DJANGO ─────────────────────────────
-
-    const API_BASE_URL =
-      import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
-
+    // ── SAVE TO DJANGO ─────────────────────────────────────────────────────────
+    let savedRule = null;
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
     const res = await fetch(`${API_BASE_URL}/sap/rules/`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(newRule),
     });
 
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+    if (data.status !== "success") throw new Error(data.message || "Failed to save rule");
 
-    if (data.status !== "success") {
-      throw new Error(data.message || "Failed to save rule");
-    }
-
-    const savedRule = data.data;
+    savedRule = {
+      ...newRule,
+      ...(data.data || {}),
+      dynamicParameters:
+        normalizeDynamicParameters(data?.data?.dynamicParameters || data?.data?.parameters || {}) ||
+        newRule.dynamicParameters,
+      parameters:
+        normalizeDynamicParameters(data?.data?.parameters || data?.data?.dynamicParameters || {}) ||
+        newRule.parameters,
+    };
 
     // ── OPTIONAL: keep redux synced ───────────────
     dispatch({
@@ -532,6 +558,7 @@ export default function AIRuleArchitect() {
 
   } catch (err) {
     console.error("Save Rule Error:", err);
+    setSavedToLib(false);
 
     addMessage({
       role: "ai",

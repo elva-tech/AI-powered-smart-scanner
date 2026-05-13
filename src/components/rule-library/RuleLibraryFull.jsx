@@ -251,7 +251,7 @@ function ActionBar() {
   const { selected, bulkLoading, list } = useAppSelector((s) => s.rules);
   const has           = selected.length > 0;
   const selectedRules = list.filter((r) => selected.includes(r.id));
-  const allHaveSim    = selectedRules.every((r) => r.simulationHistory.length > 0);
+  const allHaveSim    = selectedRules.every((r) => Array.isArray(r.simulationHistory) && r.simulationHistory.length > 0);
   const allActive     = selectedRules.every((r) => r.status === "ACTIVE");
 
   const handleActivate = () => {
@@ -510,8 +510,15 @@ function ViewRuleModal() {
   const rule       = list.find((r) => r.id === stored?.id) || stored;
   if (!rule) return null;
 
-  const hasSim    = rule.simulationHistory.length > 0;
-  const latest    = hasSim ? rule.simulationHistory[0] : null;
+  const simHistory = Array.isArray(rule.simulationHistory) ? rule.simulationHistory : [];
+  const thresholds = rule.thresholds || {
+    amountThreshold: 0,
+    frequencyLimit: 0,
+    timeWindow: 0,
+    varianceThreshold: 0,
+  };
+  const hasSim    = simHistory.length > 0;
+  const latest    = hasSim ? simHistory[0] : null;
   const isActive  = rule.status === "ACTIVE";
   const isDeployed= rule.status === "DEPLOYED";
   const isDraft   = rule.status === "DRAFT";
@@ -535,7 +542,7 @@ function ViewRuleModal() {
             <span className="text-[11px] text-[var(--muted)] font-mono">{rule.id}</span>
             {hasSim && (
               <span className="text-[11px] text-[var(--muted)]">
-                {rule.simulationHistory.length} Simulation{rule.simulationHistory.length > 1 ? "s" : ""}
+                {simHistory.length} Simulation{simHistory.length > 1 ? "s" : ""}
               </span>
             )}
           </div>
@@ -579,28 +586,28 @@ function ViewRuleModal() {
       <div className="px-6 py-4 border-b border-white/8">
         {sectionHead("RULE THRESHOLDS / PARAMETERS")}
         <div className="grid grid-cols-2 gap-2.5">
-          {rule.thresholds.amountThreshold > 0 && (
+          {thresholds.amountThreshold > 0 && (
             <div className="px-4 py-3 rounded-lg border border-white/8 bg-white/[0.025]">
               <p className="text-[10px] text-[var(--muted)] mb-1">Amount Threshold</p>
-              <p className="text-sm font-semibold text-[var(--text)]">≥ ${rule.thresholds.amountThreshold.toLocaleString()}</p>
+              <p className="text-sm font-semibold text-[var(--text)]">≥ ${thresholds.amountThreshold.toLocaleString()}</p>
             </div>
           )}
-          {rule.thresholds.frequencyLimit > 0 && (
+          {thresholds.frequencyLimit > 0 && (
             <div className="px-4 py-3 rounded-lg border border-white/8 bg-white/[0.025]">
               <p className="text-[10px] text-[var(--muted)] mb-1">Frequency Limit</p>
-              <p className="text-sm font-semibold text-[var(--text)]">≤ {rule.thresholds.frequencyLimit} occurrences</p>
+              <p className="text-sm font-semibold text-[var(--text)]">≤ {thresholds.frequencyLimit} occurrences</p>
             </div>
           )}
-          {rule.thresholds.timeWindow > 0 && (
+          {thresholds.timeWindow > 0 && (
             <div className="px-4 py-3 rounded-lg border border-white/8 bg-white/[0.025]">
               <p className="text-[10px] text-[var(--muted)] mb-1">Time Window</p>
-              <p className="text-sm font-semibold text-[var(--text)]">{rule.thresholds.timeWindow} days</p>
+              <p className="text-sm font-semibold text-[var(--text)]">{thresholds.timeWindow} days</p>
             </div>
           )}
-          {rule.thresholds.varianceThreshold > 0 && (
+          {thresholds.varianceThreshold > 0 && (
             <div className="px-4 py-3 rounded-lg border border-white/8 bg-white/[0.025]">
               <p className="text-[10px] text-[var(--muted)] mb-1">Variance Threshold</p>
-              <p className="text-sm font-semibold text-[var(--text)]">± {rule.thresholds.varianceThreshold}%</p>
+              <p className="text-sm font-semibold text-[var(--text)]">± {thresholds.varianceThreshold}%</p>
             </div>
           )}
         </div>
@@ -664,7 +671,7 @@ function ViewRuleModal() {
             <div>
               <p className="text-sm font-semibold text-teal-400">Ready to Activate</p>
               <p className="text-[11px] text-teal-400/75 mt-0.5">
-                {rule.simulationHistory.length} simulation{rule.simulationHistory.length > 1 ? "s" : ""} completed. You can run more simulations or activate the rule.
+                {simHistory.length} simulation{simHistory.length > 1 ? "s" : ""} completed. You can run more simulations or activate the rule.
               </p>
             </div>
           </div>
@@ -687,7 +694,7 @@ function ViewRuleModal() {
         <div className="px-6 py-4 border-b border-white/8">
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-semibold text-[var(--text)]">Simulation History</p>
-            <span className="text-[11px] text-[var(--muted)]">{rule.simulationHistory.length} run{rule.simulationHistory.length > 1 ? "s" : ""}</span>
+            <span className="text-[11px] text-[var(--muted)]">{simHistory.length} run{simHistory.length > 1 ? "s" : ""}</span>
           </div>
           <div className="space-y-2">
             {rule.simulationHistory.map((sim, idx) => (
@@ -808,7 +815,7 @@ function DeployToEnvModal() {
           </div>
           <div className="grid grid-cols-2 gap-4 mt-3 text-xs">
             <div><span className="text-[var(--muted)]">SAP Module: </span><span className="font-semibold text-[var(--text)]">{rule.module}</span></div>
-            <div><span className="text-[var(--muted)]">Simulations: </span><span className="font-semibold text-[var(--text)]">{rule.simulationHistory.length} completed</span></div>
+            <div><span className="text-[var(--muted)]">Simulations: </span><span className="font-semibold text-[var(--text)]">{Array.isArray(rule.simulationHistory) ? rule.simulationHistory.length : 0} completed</span></div>
           </div>
         </div>
 
@@ -1162,6 +1169,20 @@ function SimulationModal() {
   const [loadingParams, setLoadingParams] = React.useState(false);
   
   if (sim.step === 0 || !rule) return null;
+  const thresholds = rule.thresholds || {
+    amountThreshold: 0,
+    frequencyLimit: 0,
+    timeWindow: 0,
+    varianceThreshold: 0,
+  };
+
+  const normalizeDynamicParams = (raw) => {
+    if (!raw) return null;
+    if (raw.LIST && Array.isArray(raw.LIST)) return raw;
+    if (raw.PARAMETERS?.LIST && Array.isArray(raw.PARAMETERS.LIST)) return raw.PARAMETERS;
+    if (Array.isArray(raw)) return { LIST: raw };
+    return null;
+  };
 
   const canRunLiveData = rule.status === "DEPLOYED" || !!rule.deployedEnv;
 
@@ -1175,9 +1196,10 @@ function SimulationModal() {
       import('../../features/rules/rulesBackendAPI').then(({ fetchRuleDetailsAPI }) => {
         fetchRuleDetailsAPI(rule.id)
           .then((res) => {
-            if (res.dynamicParameters) {
-              setDynamicParams(res.dynamicParameters);
-            }
+            const normalized = normalizeDynamicParams(
+              res.dynamicParameters || res.data?.dynamicParameters || res.data?.parameters || rule.dynamicParameters || rule.parameters
+            );
+            if (normalized) setDynamicParams(normalized);
             setLoadingParams(false);
           })
           .catch((err) => {
@@ -1318,8 +1340,8 @@ function SimulationModal() {
           <p className="font-semibold text-[var(--muted)] uppercase tracking-wider text-[10px] mb-2">Rule Configuration</p>
           <div className="grid grid-cols-3 gap-2">
             <div><span className="text-[var(--muted)]">Module: </span><span className="font-medium text-[var(--text)]">{rule.module}</span></div>
-            <div><span className="text-[var(--muted)]">Amount: </span><span className="font-medium text-[var(--text)]">${(rule.thresholds.amountThreshold || 0).toLocaleString()}</span></div>
-            <div><span className="text-[var(--muted)]">Window: </span><span className="font-medium text-[var(--text)]">{rule.thresholds.timeWindow}d</span></div>
+            <div><span className="text-[var(--muted)]">Amount: </span><span className="font-medium text-[var(--text)]">${(thresholds.amountThreshold || 0).toLocaleString()}</span></div>
+            <div><span className="text-[var(--muted)]">Window: </span><span className="font-medium text-[var(--text)]">{thresholds.timeWindow}d</span></div>
           </div>
         </div>
         

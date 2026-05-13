@@ -56,7 +56,6 @@ export const DEPLOY_ENVIRONMENTS = [
 
 export const fetchRulesAPI = async () => {
   const response = await apiClient.get(`${API_BASE}/`);
-
   return {
     success: true,
     data: response.data.data || [],
@@ -69,7 +68,6 @@ export const fetchRulesAPI = async () => {
 
 export const fetchRuleDetailsAPI = async (ruleId) => {
   const response = await apiClient.get(`${API_BASE}/${ruleId}/`);
-
   return {
     success: true,
     data: response.data || {},
