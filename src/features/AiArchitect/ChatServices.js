@@ -152,6 +152,12 @@ export async function sendMessage({ message, sessionId, ruleContext }) {
 
       cdsCode: data.cdsCode || "",
 
+      cdsBaseinfo: data.cdsBaseinfo || "",
+
+      cdsXml: data.cdsXml || "",
+
+      dynamicParameters: data.dynamicParameters || {},
+
       threshold: extractAmount(message),
 
       timeDiff: extractDays(message),

@@ -371,9 +371,13 @@ export default function AIRuleArchitect() {
           module: resp.module,
           riskScore: resp.riskScore,
           cds: resp.cdsCode,
+          cdsBaseinfo: resp.cdsBaseinfo,
+          cdsXml: resp.cdsXml,
+          dynamicParameters: resp.dynamicParameters || {},
         });
 
       if (resp.type === "rule_result") {
+        console.log("API Response:", resp); // Debug log
         setLastRule({
           module:     resp.module,
           moduleName: SAP_MODULE_NAMES[resp.module] || resp.module,
@@ -381,11 +385,14 @@ export default function AIRuleArchitect() {
           timeDiff:   resp.timeDiff,
           riskScore:  resp.riskScore,
           cds:        resp.cdsCode,
+          cdsBaseinfo:   resp.cdsBaseinfo,
+          cdsXml:        resp.cdsXml,
+          dynamicParameters: resp.dynamicParameters || {},
           msgId:      added.id,
         });
         setSavedToLib(false);
       }
-    } catch (err) {
+    } catch {
       setTyping(false);
       addMessage({
         role: "ai",
@@ -399,51 +406,157 @@ export default function AIRuleArchitect() {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); }
   };
 
-  // ── ADD TO RULE LIBRARY ────────────────────────────────────────────────────
-  const handleSaveToLibrary = useCallback(() => {
-    if (!lastRule) return;
+ const handleSaveToLibrary = useCallback(async () => {
+  const currentRule = lastRule || (() => {
+    const message = [...messages].reverse().find(m => m.type === "rule_result");
+    if (!message) return null;
+    return {
+      module: message.module || "FI",
+      moduleName: SAP_MODULE_NAMES[message.module] || message.module || "Financial Accounting (FI)",
+      threshold: message.threshold ?? message.amountThreshold ?? 50000,
+      timeDiff: message.timeDiff ?? 7,
+      riskScore: message.riskScore ?? 0,
+      cds: message.cds || message.cdsCode || "",
+      cdsBaseinfo: message.cdsBaseinfo || "",
+      cdsXml: message.cdsXml || "",
+      dynamicParameters: message.dynamicParameters || {},
+    };
+  })();
+
+  console.log("Current Rule for saving:", currentRule); // Debug log
+
+  if (!currentRule) {
+    addMessage({
+      role: "ai",
+      type: "info",
+      text: "I could not determine the generated rule. Please try generating the rule again before saving.",
+    });
+    return;
+  }
+
+  try {
     setSavedToLib(true);
 
     const newRule = {
-      id:          `RULE-AI-${Date.now()}`,
-      name:        `AI: ${lastRule.moduleName} Anomaly Rule`,
-      description: `AI-generated rule: flags transactions in ${lastRule.moduleName} over $${lastRule.threshold?.toLocaleString()} with ${lastRule.timeDiff}+ day posting delay`,
-      module:      lastRule.module,
-      status:      "DRAFT",
-      lifecycle:   "DRAFT",
-      risk:        lastRule.riskScore >= 75 ? "HIGH" : lastRule.riskScore >= 50 ? "MEDIUM" : "LOW",
-      version:     "v1.0",
-      origin:      "AI Architect",
-      createdBy:   "AI Architect",
-      createdDate: new Date().toLocaleDateString(),
+      id: `RULE-AI-${Date.now()}`,
+
+      name: `AI: ${currentRule.moduleName} Anomaly Rule`,
+
+      description:
+        `AI-generated rule: flags transactions in ${currentRule.moduleName} ` +
+        `over $${currentRule.threshold?.toLocaleString()} ` +
+        `with ${currentRule.timeDiff}+ day posting delay`,
+
+      module: currentRule.module,
+
+      status: "DRAFT",
+      lifecycle: "DRAFT",
+
+      risk:
+        currentRule.riskScore >= 75
+          ? "HIGH"
+          : currentRule.riskScore >= 50
+          ? "MEDIUM"
+          : "LOW",
+
+      version: "1.0.0",
+
+      origin: "AI Architect",
+      createdBy: "AI Architect",
+
       thresholds: {
-        amountThreshold:   lastRule.threshold  || 0,
-        frequencyLimit:    0,
-        timeWindow:        lastRule.timeDiff   || 0,
+        amountThreshold: currentRule.threshold || 0,
+        frequencyLimit: 0,
+        timeWindow: currentRule.timeDiff || 0,
         varianceThreshold: 0,
       },
-      simulationHistory: [],
-      activatedAt:  null,
-      deployedEnv:  null,
-      cdsCode:      lastRule.cds || "",
+
+      cdsCode: currentRule.cds || currentRule.cdsCode || "",
+      cdsBaseinfo: currentRule.cdsBaseinfo || "",
+      cdsXml: currentRule.cdsXml || "",
+      dynamicParameters: currentRule.dynamicParameters || {},
+
     };
 
-    dispatch({ type: "rules/addGeneratedRule", payload: newRule });
+    console.log("New Rule payload:", newRule); // Debug log
+
+    // ── SAVE TO DJANGO ─────────────────────────────
+
+    const API_BASE_URL =
+      import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+
+    const res = await fetch(`${API_BASE_URL}/sap/rules/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(newRule),
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    if (data.status !== "success") {
+      throw new Error(data.message || "Failed to save rule");
+    }
+
+    const savedRule = data.data;
+
+    // ── OPTIONAL: keep redux synced ───────────────
+    dispatch({
+      type: "rules/addGeneratedRule",
+      payload: savedRule,
+    });
 
     addMessage({
       role: "ai",
       type: "info",
-      text: `✅ Rule added to your Rule Library as a **DRAFT**.\n\nRule ID: **${newRule.id}**\nModule: **${lastRule.module}**\nRisk: **${newRule.risk}**\n\nYou can now go to the Rule Library to run a simulation and activate it.`,
+      text:
+        `✅ Rule added to your Rule Library as a **DRAFT**.\n\n` +
+        `Rule ID: **${savedRule.id}**\n` +
+        `Module: **${savedRule.module}**\n` +
+        `Risk: **${savedRule.risk}**\n\n` +
+        `You can now run simulation and deploy the rule.`,
     });
 
     setTimeout(() => {
-      navigate("/rules", { state: { highlightRuleId: newRule.id } });
+      navigate("/rules", {
+        state: {
+          highlightRuleId: savedRule.id,
+        },
+      });
     }, 1500);
-  }, [lastRule, dispatch, addMessage, navigate]);
+
+  } catch (err) {
+    console.error("Save Rule Error:", err);
+
+    addMessage({
+      role: "ai",
+      type: "info",
+      text: "⚠️ Failed to save rule to Rule Library.",
+    });
+  }
+
+}, [lastRule, dispatch, addMessage, navigate]);
 
   // ── UPDATE RULE LIBRARY ────────────────────────────────────────────────────
   const handleUpdateLibrary = useCallback(() => {
-    if (!lastRule || !modifyMode) return;
+    const currentRule = lastRule || (() => {
+      const message = [...messages].reverse().find(m => m.type === "rule_result");
+      if (!message) return null;
+      return {
+        threshold: message.threshold ?? message.amountThreshold ?? 0,
+        timeDiff: message.timeDiff ?? 0,
+        riskScore: message.riskScore ?? 0,
+        cds: message.cds || message.cdsCode || "",
+        dynamicParameters: message.dynamicParameters || {},
+      };
+    })();
+
+    if (!currentRule || !modifyMode) return;
     setSavedToLib(true);
 
     dispatch({
@@ -452,13 +565,14 @@ export default function AIRuleArchitect() {
         id: modifyMode.ruleId,
         changes: {
           thresholds: {
-            amountThreshold:   lastRule.threshold  || 0,
+            amountThreshold:   currentRule.threshold  || 0,
             frequencyLimit:    0,
-            timeWindow:        lastRule.timeDiff   || 0,
+            timeWindow:        currentRule.timeDiff   || 0,
             varianceThreshold: 0,
           },
-          risk:    lastRule.riskScore >= 75 ? "HIGH" : lastRule.riskScore >= 50 ? "MEDIUM" : "LOW",
-          cdsCode: lastRule.cds || "",
+          risk:    currentRule.riskScore >= 75 ? "HIGH" : currentRule.riskScore >= 50 ? "MEDIUM" : "LOW",
+          cdsCode: currentRule.cds || "",
+          dynamicParameters: currentRule.dynamicParameters || {},
         },
       },
     });
@@ -470,7 +584,7 @@ export default function AIRuleArchitect() {
     });
 
     setTimeout(() => { navigate("/rules"); }, 1500);
-  }, [lastRule, modifyMode, dispatch, addMessage, navigate]);
+  }, [lastRule, messages, modifyMode, dispatch, addMessage, navigate]);
 
   const hasRuleResult = messages.some(m => m.type === "rule_result");
 

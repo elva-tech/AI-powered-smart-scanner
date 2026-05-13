@@ -703,21 +703,21 @@ function ViewRuleModal() {
                   <span className="text-[10px] text-[var(--muted)]">{sim.runAt}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-[11px]">
-                  <div><span className="text-[var(--muted)]">Date Range: </span><span className="text-[var(--text)]">{sim.dateRange.from || "—"} → {sim.dateRange.to || "—"}</span></div>
-                  <div><span className="text-[var(--muted)]">Transactions Scanned: </span><span className="text-[var(--text)] font-semibold">{sim.transactionsScanned.toLocaleString()}</span></div>
-                  <div><span className="text-[var(--muted)]">False Positive Rate: </span><span className="text-teal-400 font-semibold">{sim.falsePositiveRate}%</span></div>
-                  <div><span className="text-[var(--muted)]">Performance: </span><span className="text-teal-400 font-semibold">{sim.performance}</span></div>
+                  <div><span className="text-[var(--muted)]">Date Range: </span><span className="text-[var(--text)]">{sim.dateRange?.from || "—"} → {sim.dateRange?.to || "—"}</span></div>
+                  <div><span className="text-[var(--muted)]">Transactions Scanned: </span><span className="text-[var(--text)] font-semibold">{sim.transactionsScanned?.toLocaleString() || "—"}</span></div>
+                  <div><span className="text-[var(--muted)]">False Positive Rate: </span><span className="text-teal-400 font-semibold">{sim.falsePositiveRate ?? 0}%</span></div>
+                  <div><span className="text-[var(--muted)]">Performance: </span><span className="text-teal-400 font-semibold">{sim.performance || "N/A"}</span></div>
                   <div className="flex items-center gap-1">
                     <span className="text-[var(--muted)]">Anomalies Detected: </span>
                     <Siren size={11} className="text-red-400" />
                     <AnomaliesLink 
                       ruleId={rule.id} 
                       ruleName={rule.name}
-                      count={sim.anomaliesDetected}
+                      count={sim.anomaliesDetected || 0}
                       simId={sim.simId}
                     />
                   </div>
-                  <div><span className="text-[var(--muted)]">Thresholds: </span><span className="text-[var(--text)]">{sim.thresholds}</span></div>
+                  <div><span className="text-[var(--muted)]">Thresholds: </span><span className="text-[var(--text)]">{sim.thresholds || "N/A"}</span></div>
                 </div>
               </div>
             ))}
@@ -1158,12 +1158,69 @@ function SimulationModal() {
   const rule     = useAppSelector((s) => s.rules.activeRule);
   const sim      = useAppSelector((s) => s.rules.simulation);
   const simEnvs  = useAppSelector((s) => s.rules.simEnvs);
+  const [dynamicParams, setDynamicParams] = React.useState(null);
+  const [loadingParams, setLoadingParams] = React.useState(false);
+  
   if (sim.step === 0 || !rule) return null;
 
   const canRunLiveData = rule.status === "DEPLOYED" || !!rule.deployedEnv;
 
   const dateError = sim.config.fromDate && sim.config.toDate &&
     new Date(sim.config.toDate) < new Date(sim.config.fromDate);
+
+  // Fetch dynamic parameters when modal opens
+  React.useEffect(() => {
+    if (sim.step > 0 && rule && !dynamicParams && !loadingParams) {
+      setLoadingParams(true);
+      import('../../features/rules/rulesBackendAPI').then(({ fetchRuleDetailsAPI }) => {
+        fetchRuleDetailsAPI(rule.id)
+          .then((res) => {
+            if (res.dynamicParameters) {
+              setDynamicParams(res.dynamicParameters);
+            }
+            setLoadingParams(false);
+          })
+          .catch((err) => {
+            console.error('Failed to fetch dynamic parameters:', err);
+            setLoadingParams(false);
+          });
+      });
+    }
+  }, [sim.step, rule?.id]);
+
+  // Helper to map ABAP types to HTML input type
+  const getInputType = (abapType) => {
+    if (!abapType) return "text";
+    const lower = abapType.toLowerCase();
+    if (lower.includes("dats") || lower.includes("date")) return "date";
+    if (lower.includes("tims") || lower.includes("time")) return "time";
+    if (lower.includes("dec") || lower.includes("float") || lower.includes("numc")) return "number";
+    return "text";
+  };
+
+  // Render dynamic parameter fields
+  const renderDynamicFields = () => {
+    if (!dynamicParams?.LIST || dynamicParams.LIST.length === 0) return null;
+
+    return (
+      <>
+        <p className="text-xs font-semibold text-[var(--text)] mb-3 uppercase tracking-wider">CDS View Parameters</p>
+        {dynamicParams.LIST.map((param) => (
+          <div key={param.name}>
+            <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">{param.label}</label>
+            <input
+              type={getInputType(param.type)}
+              placeholder={param.label}
+              value={sim.config[param.name] || ""}
+              onChange={(e) => dispatch(setSimConfig({ [param.name]: e.target.value }))}
+              className="w-full px-3 py-2 rounded-lg bg-[var(--card)] border border-white/10 text-sm text-[var(--text)] focus:outline-none focus:border-[var(--primary)]"
+            />
+            <p className="text-[10px] text-[var(--muted)] mt-0.5">{param.type}</p>
+          </div>
+        ))}
+      </>
+    );
+  };
 
   const handleRun = () => {
     if (dateError) return;
@@ -1265,6 +1322,20 @@ function SimulationModal() {
             <div><span className="text-[var(--muted)]">Window: </span><span className="font-medium text-[var(--text)]">{rule.thresholds.timeWindow}d</span></div>
           </div>
         </div>
+        
+        {/* Dynamic parameters from backend */}
+        {loadingParams && (
+          <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-400">
+            Loading CDS parameters...
+          </div>
+        )}
+        
+        {dynamicParams && (
+          <div className="space-y-3 p-3 rounded-xl bg-white/[0.04] border border-white/8">
+            {renderDynamicFields()}
+          </div>
+        )}
+        
         <div>
           <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">Transaction Count</label>
           <input
@@ -1371,6 +1442,20 @@ function SimulationModal() {
             <p className="text-[10px] text-[var(--muted)]">Simulation runs against live SAP {sim.selectedEnv?.id?.toLowerCase()} data</p>
           </div>
         </div>
+        
+        {/* Dynamic parameters from backend */}
+        {loadingParams && (
+          <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-400">
+            Loading CDS parameters...
+          </div>
+        )}
+        
+        {dynamicParams && (
+          <div className="space-y-3 p-3 rounded-xl bg-white/[0.04] border border-white/8">
+            {renderDynamicFields()}
+          </div>
+        )}
+        
         <div>
           <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">Simulation Date Range</label>
           <div className="grid grid-cols-2 gap-2">
